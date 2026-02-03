@@ -1,0 +1,181 @@
+:root {
+  --bg-color: #0f172a;
+  --card-bg: rgba(30, 41, 59, 0.7);
+  --text-main: #f8fafc;
+  --text-muted: #94a3b8;
+  --accent-film: #8b5cf6; /* Violet */
+  --accent-book: #10b981; /* Emerald */
+  --border-color: rgba(148, 163, 184, 0.1);
+  --glass-border: 1px solid rgba(255, 255, 255, 0.1);
+  --font-family: 'Inter', system-ui, -apple-system, sans-serif;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  font-family: var(--font-family);
+  background-color: var(--bg-color);
+  color: var(--text-main);
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Utilities */
+.container {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 2rem;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+h1, h2, h3 {
+  font-weight: 700;
+  letter-spacing: -0.025em;
+  margin-bottom: 1rem;
+}
+
+h1 { font-size: 2.5rem; }
+h2 { font-size: 1.8rem; }
+
+a {
+  color: inherit;
+  text-decoration: none;
+  transition: opacity 0.2s;
+}
+
+a:hover { opacity: 0.8; }
+
+/* Components */
+.card {
+  background: var(--card-bg);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: var(--glass-border);
+  border-radius: 1rem;
+  padding: 1.5rem;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+}
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.75rem 1.5rem;
+  border-radius: 0.5rem;
+  font-weight: 600;
+  cursor: pointer;
+  border: none;
+  transition: transform 0.1s, box-shadow 0.2s;
+}
+
+.btn:active { transform: scale(0.98); }
+
+.btn-primary {
+  background: linear-gradient(135deg, var(--accent-film), #6d28d9);
+  color: white;
+}
+
+.btn-secondary {
+  background: linear-gradient(135deg, var(--accent-book), #059669);
+  color: white;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 2rem;
+}
+
+/* Forms */
+input, textarea, select {
+  width: 100%;
+  padding: 0.75rem;
+  background: rgba(15, 23, 42, 0.5);
+  border: 1px solid var(--border-color);
+  border-radius: 0.5rem;
+  color: var(--text-main);
+  margin-bottom: 1rem;
+  font-family: inherit;
+  box-sizing: border-box; /* Ensure padding doesn't affect width */
+}
+
+input:focus, textarea:focus, select:focus {
+  outline: 2px solid var(--text-muted);
+  border-color: transparent;
+}
+
+/* Landing Page Specifics */
+.landing-hero {
+  min-height: 80vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+}
+
+.landing-title {
+  font-size: 4rem;
+  background: linear-gradient(to right, var(--accent-film), var(--accent-book));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  margin-bottom: 2rem;
+}
+
+.choice-container {
+  display: flex;
+  gap: 2rem;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.choice-card {
+  width: 300px;
+  height: 200px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.5rem;
+  font-weight: bold;
+  transition: transform 0.3s, border-color 0.3s;
+  cursor: pointer;
+}
+
+.choice-card:hover {
+  transform: translateY(-5px);
+  border-color: #fff;
+}
+
+.film-theme .btn-primary { background: var(--accent-film); }
+.book-theme .btn-primary { background: var(--accent-book); }
+
+/* Item List */
+.item-card {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+.item-card img {
+  width: 100%;
+  height: 300px;
+  object-fit: cover;
+  border-radius: 0.5rem;
+  margin-bottom: 1rem;
+}
+.item-title { font-size: 1.25rem; margin-bottom: 0.5rem; }
+.item-meta { color: var(--text-muted); font-size: 0.9rem; margin-bottom: 1rem; }
+.item-actions { margin-top: auto; display: flex; gap: 0.5rem; }
+.btn-sm { padding: 0.4rem 0.8rem; font-size: 0.875rem; }
+.btn-danger { background-color: #ef4444; color: white; }
+
+nav {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 2rem;
+    padding-bottom: 1rem;
+    border-bottom: 1px solid var(--border-color);
+}

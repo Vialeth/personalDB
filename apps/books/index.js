@@ -609,13 +609,19 @@ function serveApp(req, res, editBookId = null) {
     `).join('') : '<p style="color:var(--da-text-muted); font-style:italic;">Şu anda okunan kitap yok.</p>';
 
     const shelfHtml = annualBooks.map(b => `
-        <div class="shelf-book" data-title="${b.title}" title="${b.title} (${b.rating || '-'})" style="height: ${Math.min(140, Math.max(80, (b.pageCount || 200) / 3))}px;">
-            ${b.title.substring(0, 20)}
+        <div class="collection-item" onclick="toggleCard(document.getElementById('book-${b.id}'))">
+            ${b.imageUrl ?
+            `<img src="${b.imageUrl}" alt="${b.title}" class="collection-cover">` :
+            `<div class="collection-placeholder">
+                    <span>${b.title}</span>
+                </div>`
+        }
+            ${b.rating ? `<div class="collection-rating">${b.rating}</div>` : ''}
         </div>
     `).join('');
 
     const libraryCardsHtml = allBooks.map(b => `
-        <div class="library-card" onclick="toggleCard(this)">
+        <div id="book-${b.id}" class="library-card" onclick="toggleCard(this)">
             <div class="library-card-img">
                 <img src="${b.imageUrl || 'https://via.placeholder.com/200x280?text=No+Cover'}" alt="${b.title}">
             </div>
@@ -629,6 +635,7 @@ function serveApp(req, res, editBookId = null) {
                 <!-- Minimized View Info -->
                 <div style="margin-top:0.5rem; display:flex; justify-content:space-between; align-items:flex-end;">
                      <span class="status-chip status-${b.status}" style="font-size:0.65em; padding:0.1rem 0.4rem;">${b.status}</span>
+                     ${b.endDate ? `<span style="font-size:0.75rem; color:var(--da-text-muted); font-style:italic;">${b.endDate}</span>` : ''}
                 </div>
 
                 <!-- Expanded Details -->

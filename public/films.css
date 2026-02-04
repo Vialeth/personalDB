@@ -201,6 +201,20 @@ a {
     -webkit-box-orient: vertical;
     border-left: 2px solid var(--ch-neon-cyan);
     padding-left: 0.5rem;
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+.film-description.expanded {
+    -webkit-line-clamp: unset;
+    display: block;
+    overflow: visible;
+    background: rgba(255, 255, 255, 0.05);
+    padding: 0.5rem;
+    border-radius: 4px;
+    position: relative;
+    z-index: 10;
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.5);
 }
 
 /* Premium Rating Badge */

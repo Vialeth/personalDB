@@ -146,7 +146,7 @@ const renderFilmGrid = (films, editMode = false) => {
                     </div>
                 </div>
                 
-                ${film.description ? `<div class="film-description" title="${film.description}">${film.description}</div>` : ''}
+                ${film.description ? `<div class="film-description" title="Okumak için tıklayın" onclick="this.classList.toggle('expanded')">${film.description}</div>` : ''}
                 
                 <div class="info-footer">
                     <div class="genre-list">${genreHtml}</div>

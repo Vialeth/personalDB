@@ -1,3 +1,18 @@
 node_modules/
 .DS_Store
 *.log
+
+# Personal Data
+database/
+public/uploads/
+*.db
+*.sqlite
+
+# Deployment & Scripts
+update_pi.sh
+ids.txt
+prepare_deploy.sh
+.gemini/
+brain/
+tmp/
+*.csv

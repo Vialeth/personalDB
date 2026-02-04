@@ -260,6 +260,12 @@ const renderPage = (content, allBooks = []) => `
              const endDates = document.getElementById('end-date-group');
              const ratingGroup = document.getElementById('rating-group');
              
+             // Visual Toggle
+             document.querySelectorAll('.switch-option').forEach(el => el.classList.remove('active'));
+             if (statusInput.parentElement.classList.contains('switch-option')) {
+                 statusInput.parentElement.classList.add('active');
+             }
+
              if (status === 'reading') {
                  if(endDates) endDates.style.display = 'none';
                  if(ratingGroup) ratingGroup.style.display = 'none';
@@ -1337,6 +1343,13 @@ router.post('/add', upload.single('imageFile'), async (req, res) => {
 router.post('/edit/:id', upload.single('imageFile'), async (req, res) => {
     let { title, author, pageCount, isbn, genres, startDate, endDate, rating, status } = req.body;
 
+    // Initialise SQL construction variables
+    let sql = `UPDATE books SET title=?, author=?, pageCount=?, isbn=?, genres=?, startDate=?, endDate=?, rating=?, status=?`;
+    // We'll calculate genreArray later, so we just hold off on params for a micro-second or define them after genre processing.
+    // Actually, genre processing happens below. Let's initialize params strictly after processing genres.
+    let imageUrl;
+    let params;
+
     // Auto-Fetch for Edit too if fields are empty
     if (!genres || !pageCount) {
         try {
@@ -1356,6 +1369,8 @@ router.post('/edit/:id', upload.single('imageFile'), async (req, res) => {
 
     if (endDate === '') endDate = null;
     if (rating === '') rating = null;
+
+    params = [title, author, pageCount, isbn, JSON.stringify(genreArray), startDate, endDate, rating, status];
 
     if (req.file) {
         imageUrl = '/uploads/' + req.file.filename;

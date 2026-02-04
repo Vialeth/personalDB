@@ -61,6 +61,7 @@ booksDb.exec(`
         title TEXT NOT NULL,
         author TEXT,
         pageCount INTEGER,
+        currentPage INTEGER DEFAULT 0,
         rating REAL,
         isbn TEXT,
         startDate TEXT,
@@ -84,9 +85,22 @@ try {
     if (!columnNames.includes('status')) booksDb.exec('ALTER TABLE books ADD COLUMN status TEXT');
     if (!columnNames.includes('genres')) booksDb.exec('ALTER TABLE books ADD COLUMN genres TEXT');
     if (!columnNames.includes('pageCount')) booksDb.exec('ALTER TABLE books ADD COLUMN pageCount INTEGER');
+    if (!columnNames.includes('currentPage')) booksDb.exec('ALTER TABLE books ADD COLUMN currentPage INTEGER DEFAULT 0');
     // comment is description.
 } catch (e) {
     console.error('Migration error:', e);
 }
+
+// Reading Sessions Table
+booksDb.exec(`
+    CREATE TABLE IF NOT EXISTS reading_sessions (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        book_id INTEGER,
+        date TEXT,
+        pages INTEGER,
+        duration INTEGER,
+        FOREIGN KEY(book_id) REFERENCES books(id)
+    )
+`);
 
 console.log('Books database initialized with Extended Schema');

@@ -5,6 +5,7 @@ const path = require('path');
 const multer = require('multer');
 const fs = require('fs');
 const csv = require('csv-parser');
+const https = require('https');
 
 const db = new Database(path.join(__dirname, '../../database/books.db'));
 
@@ -97,6 +98,127 @@ window.onclick = function(event) {
     const deleteModal = document.getElementById('delete-modal');
     if (event.target == ratingModal) ratingModal.style.display = "none";
     if (event.target == deleteModal) deleteModal.style.display = "none";
+    
+    // Close detail modal on backdrop click
+    const detailDialog = document.getElementById('bookDetailDialog');
+    if (event.target == detailDialog) {
+        detailDialog.close();
+    }
+}
+
+// Global Books Data populated by server
+let booksData = [];
+
+
+function openBookDetail(id) {
+    console.log('[BookDetail] Opening for ID:', id);
+    try {
+        console.log('[BookDetail] Total books available:', booksData.length);
+        const book = booksData.find(b => b.id === id);
+        if(!book) {
+             console.error('[BookDetail] Book NOT found for ID:', id);
+             return;
+        }
+        console.log('[BookDetail] Book found:', book.title);
+
+        // Populate Modal
+        const modal = document.getElementById('bookDetailDialog');
+        if(!modal) {
+            console.error('[BookDetail] Modal element #bookDetailDialog NOT found!');
+            return;
+        }
+
+        // Cover
+        const coverContainer = document.getElementById('detail-cover');
+        if(book.imageUrl) {
+            coverContainer.innerHTML = \`<img src="\${book.imageUrl}" style="width:100%; height:100%; object-fit:cover; border-radius:4px;">\`;
+        } else {
+            coverContainer.innerHTML = \`<div style="width:100%; height:100%; background:#2a2422; display:flex; align-items:center; justify-content:center; color:#e8dcc4; font-family:var(--da-font-display);">\${book.title}</div>\`;
+        }
+        
+        // Text Info
+        document.getElementById('detail-title').textContent = book.title;
+        document.getElementById('detail-author').textContent = book.author;
+        document.getElementById('detail-pageCount').textContent = book.pageCount || '-';
+        document.getElementById('detail-isbn').textContent = book.isbn || '-';
+        
+        // Date formatting safe check
+        try {
+             document.getElementById('detail-dates').textContent = \`\${formatDate(book.startDate)} - \${formatDate(book.endDate) || '...'}\`;
+        } catch(err) {
+            console.error('[BookDetail] Date formatting error:', err);
+             document.getElementById('detail-dates').textContent = 'Tarih Hatası';
+        }
+        
+        // Genres
+        const genresEl = document.getElementById('detail-genres');
+        genresEl.innerHTML = '';
+        if(book.genres) {
+            try {
+                const gList = JSON.parse(book.genres);
+                if(Array.isArray(gList)) {
+                    genresEl.innerHTML = gList.map(g => \`<span class="tag">\${g}</span>\`).join('');
+                }
+            } catch(e) {
+                 console.warn('[BookDetail] Genre parse error:', e);
+                 genresEl.innerText = book.genres;
+            }
+        }
+        
+        // Rating Badge
+        const ratingEl = document.getElementById('detail-rating');
+        if(book.rating) {
+            ratingEl.style.display = 'block';
+            ratingEl.innerText = book.rating;
+        } else {
+            ratingEl.style.display = 'none';
+        }
+        
+        // Status Chip
+        const statusEl = document.getElementById('detail-status');
+        if(statusEl) {
+            statusEl.className = \`status-chip status-\${book.status}\`;
+            statusEl.innerText = book.status === 'reading' ? 'OKUNUYOR' : (book.status === 'read' ? 'OKUNDU' : 'YARIM');
+        }
+        
+        // Actions
+        document.getElementById('detail-edit-link').href = \`/books/edit/\${book.id}\`;
+        
+        // Setup Delete Button with correct closure
+        const delBtn = document.getElementById('detail-delete-btn');
+        // Remove old listeners by cloning
+        const newDelBtn = delBtn.cloneNode(true);
+        delBtn.parentNode.replaceChild(newDelBtn, delBtn);
+        
+        newDelBtn.onclick = (e) => {
+            modal.close();
+            openDeleteModal(book.id, book.title.replace(/'/g, "\\'"), e);
+        };
+
+        if (typeof modal.showModal === "function") {
+            modal.showModal();
+            console.log('[BookDetail] Modal opened successfully via showModal');
+        } else {
+            console.error("[BookDetail] dialog.showModal is not a function - browser support issue?");
+            modal.setAttribute("open", ""); // Fallback
+        }
+
+    } catch(err) {
+        console.error('[BookDetail] Critical Error:', err);
+        alert('Detay açılırken hata oluştu: ' + err.message);
+    }
+}
+
+function formatDate(dateStr) {
+    if (!dateStr) return '';
+    try {
+        const d = new Date(dateStr);
+        if (isNaN(d.getTime())) return dateStr;
+        const day = String(d.getDate()).padStart(2, '0');
+        const month = String(d.getMonth() + 1).padStart(2, '0');
+        const year = String(d.getFullYear());
+        return \`\${day}.\${month}.\${year}\`;
+    } catch(e) { return dateStr; }
 }
 </script>
 `;
@@ -113,7 +235,7 @@ function formatDate(dateStr) {
 }
 
 // Helper for layout
-const renderPage = (content) => `
+const renderPage = (content, allBooks = []) => `
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -449,9 +571,10 @@ const renderPage = (content) => `
                 <span>Ex Libris</span>
             </div>
             <div style="display: flex; gap: 2rem;">
-                <a href="#" onclick="showSection('section-home'); return false;" class="nav-link">Vitrin</a>
-                <a href="#" onclick="showSection('section-library'); return false;" class="nav-link">Kütüphane</a>
-                <a href="#" onclick="showSection('section-add'); return false;" class="nav-link">Kitap Ekle</a>
+                <a href="/books?section=home" class="nav-link">Vitrin</a>
+                <a href="/books/stats" class="nav-link">İstatistik</a>
+                <a href="/books?section=library" class="nav-link">Kütüphane</a>
+                <a href="/books?section=add" class="nav-link">Kitap Ekle</a>
             </div>
         </nav>
 
@@ -477,7 +600,58 @@ const renderPage = (content) => `
                     </div>
                 </form>
             </div>
+            </div>
         </div>
+        
+        <!-- Book Detail Modal (New) -->
+        <dialog id="bookDetailDialog" style="padding:0; border:1px solid var(--da-accent-orange); border-radius:8px; background:var(--da-panel-wood); color:var(--da-text-cream); width:90%; max-width:700px; backdrop-filter:blur(10px); box-shadow:0 20px 50px rgba(0,0,0,0.8);">
+            
+             <!-- Close Button (Absolute) -->
+            <button type="button" onclick="document.getElementById('bookDetailDialog').close()" style="position:absolute; top:10px; right:15px; background:none; border:none; color:var(--da-text-muted); cursor:pointer; font-size:2rem; z-index:10; line-height:1;">&times;</button>
+
+            <div style="display:flex; flex-direction:column;">
+                <div style="display:flex; flex-wrap:wrap; padding:2.5rem 2rem 2rem 2rem; gap:2rem;">
+                    <!-- Left: Cover -->
+                    <div style="flex:0 0 200px; display:flex; flex-direction:column; align-items:center;">
+                        <div style="position:relative; width:200px; height:300px; box-shadow:5px 5px 15px rgba(0,0,0,0.5); border-radius:4px; overflow:hidden; background:#222;">
+                            <div id="detail-cover" style="width:100%; height:100%;"></div>
+                        </div>
+                        <div id="detail-rating" style="margin-top:1rem; font-size:2.5rem; color:var(--da-accent-orange); font-family:var(--da-font-display); font-weight:bold;"></div>
+                        <span id="detail-status" style="margin-top:0.5rem; display:block;"></span>
+                    </div>
+                    
+                    <!-- Right: Info -->
+                    <div style="flex:1; min-width:250px;">
+                        
+                        <h2 id="detail-title" style="margin:0 0 0.5rem 0; font-size:2rem; line-height:1.2;"></h2>
+                        <div id="detail-author" style="font-size:1.2rem; color:var(--da-accent-orange); margin-bottom:1.5rem; font-style:italic;"></div>
+                        
+                        <div style="display:grid; grid-template-columns:1fr 1fr; gap:1rem; margin-bottom:1.5rem; background:rgba(0,0,0,0.2); padding:1rem; border-radius:4px;">
+                            <div>
+                                <div class="detail-label">Sayfa</div>
+                                <div id="detail-pageCount" style="font-size:1.1rem;"></div>
+                            </div>
+                            <div>
+                                <div class="detail-label">ISBN</div>
+                                <div id="detail-isbn" style="font-size:1.1rem;"></div>
+                            </div>
+                            <div style="grid-column:span 2;">
+                                <div class="detail-label">Tarih Aralığı</div>
+                                <div id="detail-dates" style="font-size:1.1rem;"></div>
+                            </div>
+                        </div>
+                        
+                        <div class="detail-label">Türler</div>
+                        <div id="detail-genres" style="margin-bottom:2rem;"></div>
+                        
+                        <div style="display:flex; gap:1rem; margin-top:auto;">
+                            <a id="detail-edit-link" class="btn-da">Düzenle</a>
+                            <button id="detail-delete-btn" class="btn-da btn-da-danger">Sil</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </dialog>
 
         <!-- Delete Modal -->
         <div id="delete-modal" class="modal">
@@ -493,8 +667,11 @@ const renderPage = (content) => `
             </div>
         </div>
 
-    </div>
     ${stringToColorScript}
+    <script>
+        // Inject Server Data
+        booksData = ${JSON.stringify(allBooks).replace(/</g, '\\u003c')};
+    </script>
 </body>
 </html>
 `;
@@ -506,7 +683,8 @@ function getCommonData(req) {
     const annualBooks = db.prepare("SELECT * FROM books WHERE (status = 'read' OR status = 'dropped') AND (startDate LIKE ? OR endDate LIKE ?)").all(`${currentYear}%`, `${currentYear}%`);
     const totalBooks = annualBooks.length;
     const totalPages = annualBooks.reduce((acc, b) => acc + (b.pageCount || 0), 0);
-    const avgRating = totalBooks > 0 ? (annualBooks.reduce((acc, b) => acc + (b.rating || 0), 0) / totalBooks).toFixed(1) : 0;
+    const ratedBooks = annualBooks.filter(b => b.rating !== null && b.rating !== undefined);
+    const avgRating = ratedBooks.length > 0 ? (ratedBooks.reduce((acc, b) => acc + b.rating, 0) / ratedBooks.length).toFixed(1) : 0;
 
     // Filters Data Extraction
     const allAuthors = db.prepare("SELECT DISTINCT author FROM books ORDER BY author ASC").all()
@@ -592,10 +770,43 @@ function serveApp(req, res, editBookId = null) {
 
     const currentReadsHtml = currentReads.length > 0 ? currentReads.map(b => `
         <div class="read-card">
-            <img src="${b.imageUrl || 'https://via.placeholder.com/100x150?text=No+Cover'}" alt="Cover">
+            <div class="read-cover-wrapper">
+                <img src="${b.imageUrl || 'https://via.placeholder.com/100x150?text=No+Cover'}" alt="Cover">
+            </div>
             <div class="read-info">
                 <div class="read-title">${b.title}</div>
                 <div class="read-author">${b.author}</div>
+                
+                <!-- Progress Bar -->
+                <div class="progress-container" style="margin: 0.5rem 0;">
+                    <div style="display:flex; justify-content:space-between; font-size:0.8rem; color:var(--da-text-muted); margin-bottom:0.2rem;">
+                         <span>${b.currentPage || 0} / ${b.pageCount || '?'}</span>
+                         <span>${b.pageCount ? Math.round(((b.currentPage || 0) / b.pageCount) * 100) + '%' : ''}</span>
+                    </div>
+                    <div style="background:rgba(255,255,255,0.1); height:6px; border-radius:3px; overflow:hidden;">
+                         <div style="background:var(--da-accent-orange); height:100%; width:${b.pageCount ? Math.min(100, ((b.currentPage || 0) / b.pageCount) * 100) : 0}%;"></div>
+                    </div>
+                </div>
+
+                <!-- Quick Updates -->
+                <!-- Quick Updates -->
+                <div style="margin-bottom:0.5rem; display:grid; gap:0.5rem;">
+                     <!-- Daily Session Form -->
+                     <form action="/books/progress/${b.id}" method="POST" style="display:flex; gap:0.5rem;">
+                         <input type="number" name="pages" placeholder="+Sayfa" class="filter-input" style="flex:1; min-width:0; font-size:0.9rem; padding:0.3rem;" min="1" required>
+                         <button type="submit" class="btn-da" style="font-size:0.8rem; padding:0.3rem 0.5rem; background:rgba(255,255,255,0.1);">Ekle</button>
+                     </form>
+                     
+                     <!-- Manual Override Form -->
+                     <details style="font-size:0.8rem; color:var(--da-text-muted);">
+                        <summary style="cursor:pointer; margin-bottom:0.2rem;">Düzelt</summary>
+                        <form action="/books/progress/${b.id}" method="POST" style="display:flex; gap:0.5rem;">
+                            <input type="number" name="currentPage" placeholder="Şu an kaçtasın?" class="filter-input" style="flex:1; min-width:0; font-size:0.9rem; padding:0.3rem;" value="${b.currentPage || 0}">
+                            <button type="submit" class="btn-da" style="font-size:0.8rem; padding:0.3rem 0.5rem;">Güncelle</button>
+                        </form>
+                     </details>
+                </div>
+
                 <div class="read-progress">
                     <span>${b.pageCount ? b.pageCount + ' pages' : 'Unknown length'}</span>
                 </div>
@@ -609,7 +820,7 @@ function serveApp(req, res, editBookId = null) {
     `).join('') : '<p style="color:var(--da-text-muted); font-style:italic;">Şu anda okunan kitap yok.</p>';
 
     const shelfHtml = annualBooks.map(b => `
-        <div class="collection-item" onclick="toggleCard(document.getElementById('book-${b.id}'))">
+        <div class="collection-item" onclick="openBookDetail(${b.id})">
             ${b.imageUrl ?
             `<img src="${b.imageUrl}" alt="${b.title}" class="collection-cover">` :
             `<div class="collection-placeholder">
@@ -621,7 +832,7 @@ function serveApp(req, res, editBookId = null) {
     `).join('');
 
     const libraryCardsHtml = allBooks.map(b => `
-        <div id="book-${b.id}" class="library-card" onclick="toggleCard(this)">
+        <div id="book-${b.id}" class="library-card" onclick="openBookDetail(${b.id})">
             <div class="library-card-img">
                 <img src="${b.imageUrl || 'https://via.placeholder.com/200x280?text=No+Cover'}" alt="${b.title}">
             </div>
@@ -672,10 +883,17 @@ function serveApp(req, res, editBookId = null) {
     `).join('');
 
     let activeSectionInfo = { home: 'block', lib: 'none', add: 'none' };
-    if (bookToEdit) {
+
+    // Explicit Generic Section Handling
+    const section = req.query.section;
+    if (editBookId) {
         activeSectionInfo = { home: 'none', lib: 'none', add: 'block' };
-    } else if (req.query.search || req.query.author || req.query.genre || req.query.year || req.query.section === 'library') {
+    } else if (section === 'add') {
+        activeSectionInfo = { home: 'none', lib: 'none', add: 'block' };
+    } else if (section === 'library' || req.query.search || req.query.author || req.query.genre || req.query.year) {
         activeSectionInfo = { home: 'none', lib: 'block', add: 'none' };
+    } else if (section === 'home') {
+        activeSectionInfo = { home: 'block', lib: 'none', add: 'none' };
     }
 
     const formTitle = bookToEdit ? 'Kitabı Düzenle' : 'Manuel Giriş';
@@ -756,8 +974,8 @@ function serveApp(req, res, editBookId = null) {
                         ${data.allYears.map(y => `<option value="${y}" ${req.query.year === y ? 'selected' : ''}>${y}</option>`).join('')}
                     </select>
 
-                    <button type="submit" class="btn-da">Uygula</button>
-                    ${(req.query.search || req.query.author || req.query.genre || req.query.year) ? '<a href="/books?section=library" class="btn-da" style="border:none; color:var(--da-text-muted);">✖ Temizle</a>' : ''}
+                    <button type="submit" class="btn-da">Filtrele</button>
+                    ${(req.query.search || req.query.author || req.query.genre || req.query.year) ? '<a href="/books?section=library" class="btn-da" style="text-decoration:none; border-color:var(--da-accent-red); color:var(--da-accent-red);">Temizle</a>' : ''}
                 </form>
             </div>
             
@@ -766,86 +984,226 @@ function serveApp(req, res, editBookId = null) {
             </div>
         </div>
 
-        <!-- SECTION C: KITAP EKLE / DUZENLE -->
-        <div id="section-add" class="app-section" style="display:${activeSectionInfo.add};">
-            <div class="section-title">Kitap Ekle / Düzenle</div>
-            <div style="display:grid; grid-template-columns: 2fr 1fr; gap: 2rem;">
-                <div class="card">
-                    <h3>${formTitle}</h3>
-                    <form action="${formAction}" method="POST" enctype="multipart/form-data">
-                         ${bookToEdit ? '<div style="margin-bottom:1rem;"><a href="/books" style="color:var(--da-text-muted);">← İptal ve Geri Dön</a></div>' : ''}
-                        
-                        <div class="switch-container">
-                            <label class="switch-option ${(!b.status || b.status === 'reading') ? 'active' : ''}">
-                                <input type="radio" name="status" value="reading" ${(!b.status || b.status === 'reading') ? 'checked' : ''} style="display:none;" onchange="toggleStatusFields(); this.parentElement.classList.add('active'); this.parentElement.nextElementSibling.classList.remove('active'); this.parentElement.nextElementSibling.nextElementSibling.classList.remove('active');">
-                                Okunuyor
-                            </label>
-                            <label class="switch-option ${(b.status === 'read') ? 'active' : ''}">
-                                <input type="radio" name="status" value="read" ${(b.status === 'read') ? 'checked' : ''} style="display:none;" onchange="toggleStatusFields(); this.parentElement.classList.add('active'); this.parentElement.previousElementSibling.classList.remove('active'); this.parentElement.parentElement.lastElementChild.classList.remove('active');">
-                                Okundu
-                            </label>
-                            <label class="switch-option ${(b.status === 'dropped') ? 'active' : ''}">
-                                <input type="radio" name="status" value="dropped" ${(b.status === 'dropped') ? 'checked' : ''} style="display:none;" onchange="toggleStatusFields(); this.parentElement.classList.add('active'); this.parentElement.previousElementSibling.classList.remove('active'); this.parentElement.previousElementSibling.previousElementSibling.classList.remove('active');">
-                                Yarım
-                            </label>
+        <!-- SECTION C: KITAP EKLE/DUZENLE -->
+        <div id="section-add" class="app-section" style="display:${activeSectionInfo.add}; max-width:600px; margin:0 auto;">
+            <div class="section-title">${formTitle}</div>
+            
+            <div style="display: flex; gap: 1rem; margin-bottom: 2rem;">
+                  <button class="btn-da btn-da-primary" onclick="window.location.href='/books?section=add'">
+                     Manuel Ekle
+                  </button>
+                  <button class="btn-da" onclick="document.getElementById('bookSearchModal').showModal()">
+                     🔍 İnternetten Ara & Ekle
+                  </button>
+            </div>
+
+            <!-- Import CSV Section (Collapsed) -->
+            <details style="margin-bottom:2rem; background:rgba(0,0,0,0.2); padding:1rem; border-radius:4px; border:1px solid var(--da-border);">
+                <summary style="cursor:pointer; font-weight:bold; color:var(--da-accent-orange);">📤 Toplu CSV Yükle / İçe Aktar</summary>
+                <div style="margin-top:1rem;">
+                     <p style="font-size:0.9rem; color:var(--da-text-muted); margin-bottom:1rem;">
+                        CSV dosyanız şu sütunları içerebilir: <code>Title, Author, My Rating, Date Read, Number of Pages, Exclusive Shelf, ISBN, Original Publication Year, Date Added</code>. <br>
+                        (Goodreads export formatı desteklenir)
+                     </p>
+                     <form action="/books/import-csv" method="POST" enctype="multipart/form-data" style="display:flex; gap:1rem; align-items:center;">
+                        <div class="file-input-wrapper" style="flex:1; margin-bottom:0;">
+                             <input type="file" name="csvFile" accept=".csv" required>
                         </div>
-                        <label>Kitap Adı</label>
-                        <input type="text" name="title" value="${b.title || ''}" required>
-                        <label>Yazar</label>
-                        <input type="text" name="author" value="${b.author || ''}" required>
-                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
-                            <div>
-                                <label>Sayfa Sayısı</label>
-                                <input type="number" name="pageCount" value="${b.pageCount || ''}">
-                            </div>
-                            <div>
-                                <label>ISBN</label>
-                                <input type="text" name="isbn" value="${b.isbn || ''}">
-                            </div>
-                        </div>
-                        <label>Türler (Virgül ile ayırın)</label>
-                        <input type="text" name="genres" value="${b.genres ? JSON.parse(b.genres).join(', ') : ''}" placeholder="Roman, Bilim Kurgu...">
-                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
-                            <div>
-                                <label>Başlama Tarihi</label>
-                                <input type="date" name="startDate" value="${b.startDate || new Date().toISOString().split('T')[0]}">
-                            </div>
-                            <div id="end-date-group" style="${(b.status && b.status !== 'reading') ? 'display:block' : 'display:none'}">
-                                <label>Bitiş Tarihi</label>
-                                <input type="date" name="endDate" value="${b.endDate || ''}">
-                            </div>
-                        </div>
-                        <div id="rating-group" style="${(b.status && b.status !== 'reading') ? 'display:block' : 'display:none'}">
-                            <label>Puan (0-10)</label>
-                            <input type="number" name="rating" step="0.1" max="10" value="${b.rating || ''}">
-                        </div>
-                        
-                        <label>Kapak Resmi</label>
-                        <div class="file-input-wrapper">
-                            <input type="file" name="imageFile" accept="image/*">
-                        </div>
-                        <div style="margin-bottom: 1rem; font-size: 0.8rem; color: var(--da-text-muted);">
-                             ${bookToEdit && b.imageUrl ? 'Mevcut resim var. Değiştirmek istemiyorsanız boş bırakın.' : 'Veya resim yükleyin.'}
-                        </div>
-                        
-                        <button type="submit" class="btn-da btn-da-primary" style="width:100%; margin-top: 1rem;">${formBtnText}</button>
-                    </form>
+                        <button type="submit" class="btn-da">Yükle</button>
+                     </form>
                 </div>
-                ${!bookToEdit ? `
-                <div class="card" style="height: fit-content;">
-                    <h3>Toplu İçe Aktarım</h3>
-                    <div style="border: 2px dashed var(--da-border); padding: 1.5rem; text-align: center; border-radius: 4px; color: var(--da-text-muted);">
-                        <form action="/books/import" method="POST" enctype="multipart/form-data">
-                            <p style="margin-bottom:1rem; font-size:0.9rem;">Notion CSV export dosyanızı yükleyin.</p>
-                            <input type="file" name="csvFile" accept=".csv" required style="max-width:100%; margin-bottom:1rem;">
-                            <button type="submit" class="btn-da">Yükle ve İçe Aktar</button>
-                        </form>
+            </details>
+
+            <!-- Main Form -->
+            <form action="${formAction}" method="POST" enctype="multipart/form-data" style="background:var(--da-panel-wood); padding:2rem; border-radius:8px; border:1px solid var(--da-border);">
+                <!-- Hidden inputs for logic -->
+                <input type="hidden" name="id" value="${b.id || ''}">
+                <input type="hidden" id="hidden-imageUrl" name="imageUrl" value="${b.imageUrl || ''}">
+                
+                <label style="display:block; margin-bottom:0.5rem;">Kitap Adı *</label>
+                <input type="text" name="title" required class="filter-input" value="${b.title || ''}">
+
+                <label style="display:block; margin-bottom:0.5rem;">Yazar *</label>
+                <input type="text" name="author" required class="filter-input" value="${b.author || ''}">
+
+                <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+                    <div>
+                        <label style="display:block; margin-bottom:0.5rem;">Sayfa Sayısı</label>
+                        <input type="number" name="pageCount" class="filter-input" value="${b.pageCount || ''}">
+                    </div>
+                     <div>
+                        <label style="display:block; margin-bottom:0.5rem;">ISBN</label>
+                        <input type="text" name="isbn" class="filter-input" value="${b.isbn || ''}">
                     </div>
                 </div>
-                ` : ''}
-            </div>
+
+                <label style="display:block; margin-bottom:0.5rem;">Kapak Görseli</label>
+                <!-- Helper text regarding image source -->
+                <div id="image-helper-text" style="font-size:0.8rem; color:var(--da-text-muted); margin-bottom:0.5rem;">
+                    ${b.imageUrl ? '<span style="color:var(--da-accent-green);">✓ Mevcut kapak URL ile tanımlı.</span> Değiştirmek için dosya yükleyin veya arama yapın.' : 'Dosya yükleyebilir veya "İnternetten Ara" ile otomatik seçebilirsiniz.'}
+                </div>
+                <div class="file-input-wrapper">
+                    <input type="file" name="coverImage" accept="image/*">
+                </div>
+
+                <label style="display:block; margin-bottom:0.5rem;">Durum</label>
+                <div class="switch-container" style="background:rgba(0,0,0,0.5);">
+                    <label class="switch-option active">
+                        <input type="radio" name="status" value="reading" ${(!b.status || b.status === 'reading') ? 'checked' : ''} onclick="toggleStatusFields()" style="display:none;">
+                        Okuyorum
+                    </label>
+                    <label class="switch-option">
+                        <input type="radio" name="status" value="read" ${b.status === 'read' ? 'checked' : ''} onclick="toggleStatusFields()" style="display:none;">
+                        Okudum
+                    </label>
+                    <label class="switch-option">
+                        <input type="radio" name="status" value="dropped" ${b.status === 'dropped' ? 'checked' : ''} onclick="toggleStatusFields()" style="display:none;">
+                        Yarım
+                    </label>
+                </div>
+
+                <!-- Conditional Fields -->
+                <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+                    <div>
+                        <label style="display:block; margin-bottom:0.5rem;">Başlama Tarihi</label>
+                        <input type="date" name="startDate" class="filter-input" value="${b.startDate || new Date().toISOString().split('T')[0]}">
+                    </div>
+                    <div id="end-date-group" style="display:none;">
+                        <label style="display:block; margin-bottom:0.5rem;">Bitiş Tarihi</label>
+                        <input type="date" name="endDate" class="filter-input" value="${b.endDate || ''}">
+                    </div>
+                </div>
+
+                <div id="rating-group" style="display:none; margin-top:1rem;">
+                    <label style="display:block; margin-bottom:0.5rem;">Puanım (0-10)</label>
+                    <input type="number" name="rating" step="0.1" min="0" max="10" class="filter-input" value="${b.rating || ''}">
+                </div>
+
+                <label style="display:block; margin-top:1rem; margin-bottom:0.5rem;">Türler (Virgülle ayırın)</label>
+                <input type="text" name="genres" placeholder="Örn: Bilim Kurgu, Klasik, Roman" class="filter-input" value="${b.genres ? JSON.parse(b.genres).join(', ') : ''}">
+
+                <button type="submit" class="btn-da btn-da-primary" style="width:100%; margin-top:1rem; font-size:1.1rem; padding:1rem;">${formBtnText}</button>
+            </form>
         </div>
-    `));
+
+        <!-- Google Books Search Modal -->
+        <dialog id="bookSearchModal" style="width:90%; max-width:800px; background:var(--da-bg-card); border:1px solid var(--da-accent-orange); color:var(--da-text-cream); padding:0; border-radius:8px; backdrop-filter:blur(10px); height:80vh;">
+             <div style="padding:1rem; border-bottom:1px solid rgba(255,255,255,0.1); display:flex; justify-content:space-between; align-items:center;">
+                <h3 style="margin:0; font-family:var(--da-font-display); color:var(--da-accent-orange);">Kitap Arama (Open Library)</h3>
+                <button type="button" onclick="document.getElementById('bookSearchModal').close()" style="background:none; border:none; color:#fff; font-size:1.5rem; cursor:pointer;">&times;</button>
+            </div>
+            <div style="padding:1rem;">
+                <div style="display:flex; gap:10px; margin-bottom:1rem;">
+                    <input type="text" id="apiSearchInput" placeholder="Kitap veya yazar ara..." class="filter-input" style="flex:1;" onkeydown="if(event.key === 'Enter') searchBooksApi()">
+                    <button type="button" onclick="searchBooksApi()" class="btn-da btn-da-primary">ARA</button>
+                </div>
+                <div id="apiLoading" style="display:none; text-align:center; padding:2rem; color:#888;">Aranıyor...</div>
+                <div id="apiResults" style="display:grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap:1rem; overflow-y:auto; max-height:calc(80vh - 150px); padding-right:0.5rem;"></div>
+            </div>
+        </dialog>
+
+         <script>
+            function openBookSearch() {
+                const title = document.querySelector('input[name="title"]').value;
+                if(title) {
+                    document.getElementById('apiSearchInput').value = title;
+                    searchBooksApi();
+                }
+                document.getElementById('bookSearchModal').showModal();
+            }
+
+            async function searchBooksApi() {
+                const query = document.getElementById('apiSearchInput').value;
+                if(!query) return;
+
+                document.getElementById('apiLoading').style.display = 'block';
+                document.getElementById('apiResults').innerHTML = '';
+
+                try {
+                    // Using Open Library API to avoid Google's 429 Rate Limits
+                    const res = await fetch(\`https://openlibrary.org/search.json?q=\${encodeURIComponent(query)}&limit=20\`);
+                    if (!res.ok) throw new Error(\`HTTP Error: \${res.status} \${res.statusText}\`);
+                    const data = await res.json();
+                    
+                    document.getElementById('apiLoading').style.display = 'none';
+
+                    if(data.docs && data.docs.length > 0) {
+                        document.getElementById('apiResults').innerHTML = data.docs.map(book => {
+                            // Extract & Normalize Data from Open Library
+                            const title = book.title;
+                            const author = book.author_name ? book.author_name[0] : 'Unknown';
+                            const coverUrl = book.cover_i ? \`https://covers.openlibrary.org/b/id/\${book.cover_i}-M.jpg\` : '';
+                            const pageCount = book.number_of_pages_median || book.number_of_pages || 0;
+                            const genres = book.subject ? book.subject.slice(0, 5) : []; // Take top 5 subjects
+                            const isbn = book.isbn ? book.isbn[0] : '';
+                            
+                            // Safe assignment for onclick
+                            const bookData = {
+                                title: title,
+                                authors: book.author_name || [],
+                                pageCount: pageCount,
+                                categories: genres,
+                                isbn: isbn,
+                                coverUrl: coverUrl
+                            };
+
+                            // Escape quotes for onclick params
+                            const safeBook = JSON.stringify(bookData).replace(/'/g, "&#39;").replace(/"/g, "&quot;");
+                            return \`
+                            <div onclick='selectBook(\${safeBook})' style="background:rgba(0,0,0,0.3); border-radius:4px; padding:0.5rem; cursor:pointer; text-align:center; border:1px solid transparent; transition:all 0.2s;" onmouseover="this.style.borderColor='var(--da-accent-orange)'" onmouseout="this.style.borderColor='transparent'">
+                                <div style="height:160px; margin-bottom:0.5rem; display:flex; align-items:center; justify-content:center; background:#111;">
+                                    \${coverUrl ? '<img src="' + coverUrl + '" style="max-height:100%; max-width:100%;">' : '<span style="color:#555; font-size:0.8rem;">No Cover</span>'}
+                                </div>
+                                <div style="font-weight:bold; font-size:0.85rem; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">\${title}</div>
+                                <div style="font-size:0.75rem; color:#888;">\${author}</div>
+                            </div>
+                            \`;
+                        }).join('');
+                    } else {
+                        document.getElementById('apiResults').innerHTML = '<div style="grid-column:1/-1; text-align:center; color:#666;">Sonuç bulunamadı.</div>';
+                    }
+                } catch(e) {
+                    document.getElementById('apiLoading').style.display = 'none';
+                    document.getElementById('apiResults').innerHTML = \`<div style="grid-column:1/-1; text-align:center; color:#ff5555; padding:1rem;">Hata Oluştu: \${e.message}</div>\`;
+                    console.error('Book Search Error:', e);
+                }
+            }
+
+function selectBook(book) {
+    try {
+        // Populate Fields
+        document.querySelector('input[name="title"]').value = book.title;
+        if (book.authors && book.authors.length > 0) {
+            document.querySelector('input[name="author"]').value = book.authors.join(', ');
+        }
+        if (book.pageCount) {
+            document.querySelector('input[name="pageCount"]').value = book.pageCount;
+        }
+        if (book.categories && book.categories.length > 0) {
+            document.querySelector('input[name="genres"]').value = book.categories.join(', ');
+        }
+        if (book.isbn) {
+            document.querySelector('input[name="isbn"]').value = book.isbn;
+        }
+
+        // Image URL to hidden field
+        if (book.coverUrl) {
+            document.getElementById('hidden-imageUrl').value = book.coverUrl;
+
+            // Update helper text to show success
+            const helper = document.getElementById('image-helper-text');
+            if (helper) {
+                helper.innerHTML = '<span style="color:var(--da-accent-orange);">✓ Kapak resmi seçildi.</span> (Dosya yüklerseniz o geçerli olur)';
+            }
+        }
+
+        document.getElementById('bookSearchModal').close();
+    } catch (e) {
+        alert('Seçim hatası: ' + e.message);
+    }
+}
+         </script >
+    `, allBooks));
 }
 
 // GET / - Main View
@@ -858,12 +1216,111 @@ router.get('/edit/:id', (req, res) => {
     serveApp(req, res, req.params.id);
 });
 
+
+
+// Google Books API Helper
+async function fetchBookMetadata(title, author) {
+    return new Promise((resolve) => {
+        if (!title) return resolve(null);
+
+        const query = `intitle:${encodeURIComponent(title)}${author ? `+inauthor:${encodeURIComponent(author)}` : ''} `;
+        const url = `https://www.googleapis.com/books/v1/volumes?q=${query}&maxResults=1&langRestrict=tr`;
+
+        https.get(url, (res) => {
+            let data = '';
+            res.on('data', (chunk) => data += chunk);
+            res.on('end', () => {
+                try {
+                    const json = JSON.parse(data);
+                    if (json.totalItems > 0 && json.items && json.items[0].volumeInfo) {
+                        const info = json.items[0].volumeInfo;
+                        resolve({
+                            genres: info.categories || [],
+                            pageCount: info.pageCount || null,
+                            imageUrl: (info.imageLinks && info.imageLinks.thumbnail) ? info.imageLinks.thumbnail.replace('http:', 'https:') : null,
+                            isbn: (info.industryIdentifiers && info.industryIdentifiers.find(i => i.type === 'ISBN_13')) ? info.industryIdentifiers.find(i => i.type === 'ISBN_13').identifier : null,
+                            description: info.description || null
+                        });
+                    } else {
+                        resolve(null);
+                    }
+                } catch (e) {
+                    console.error('API Parse Error:', e);
+                    resolve(null);
+                }
+            });
+        }).on('error', (e) => {
+            console.error('API Request Error:', e);
+            resolve(null);
+        });
+    });
+}
+
+// GET /api/search - Proxy to Google Books
+router.get('/api/search', (req, res) => {
+    const q = req.query.q;
+    if (!q) return res.json({ items: [] });
+
+    console.log(`[Search] Query: ${q}`);
+    // Removed langRestrict=tr to allow all books (e.g. English)
+    const url = `https://www.googleapis.com/books/v1/volumes?q=${encodeURIComponent(q)}&maxResults=20`;
+    console.log(`[Search] URL: ${url}`);
+
+    https.get(url, (apiRes) => {
+        let data = '';
+        apiRes.on('data', chunk => data += chunk);
+        apiRes.on('end', () => {
+            console.log(`[Search] API Response Status: ${apiRes.statusCode}`);
+            try {
+                const json = JSON.parse(data);
+                console.log(`[Search] Items found: ${json.items ? json.items.length : 0}`);
+
+                const results = (json.items || []).map(item => {
+                    const info = item.volumeInfo;
+                    return {
+                        id: item.id,
+                        title: info.title,
+                        authors: info.authors || [],
+                        publishedDate: info.publishedDate,
+                        description: info.description,
+                        pageCount: info.pageCount,
+                        categories: info.categories || [],
+                        imageLinks: info.imageLinks,
+                        industryIdentifiers: info.industryIdentifiers
+                    };
+                });
+                res.json({ items: results });
+            } catch (e) {
+                console.error('[Search] Parse Error:', e);
+                console.error('[Search] Raw Data:', data.substring(0, 200)); // Log first 200 chars
+                res.status(500).json({ error: 'Parse error' });
+            }
+        });
+    }).on('error', (e) => {
+        console.error('[Search] Request Error:', e);
+        res.status(500).json({ error: e.message });
+    });
+});
+
 // POST /add
-router.post('/add', upload.single('imageFile'), (req, res) => {
-    let { title, author, pageCount, isbn, genres, startDate, endDate, rating, status } = req.body;
-    let imageUrl = null;
+router.post('/add', upload.single('imageFile'), async (req, res) => {
+    let { title, author, pageCount, isbn, genres, startDate, endDate, rating, status, imageUrl } = req.body;
+
     if (req.file) {
         imageUrl = '/uploads/' + req.file.filename;
+    }
+
+    // Auto-Fetch if critical fields are missing
+    if (!genres || !pageCount) {
+        try {
+            const metadata = await fetchBookMetadata(title, author);
+            if (metadata) {
+                if (!genres && metadata.genres.length > 0) genres = metadata.genres.join(', ');
+                if (!pageCount && metadata.pageCount) pageCount = metadata.pageCount;
+                if (!isbn && metadata.isbn) isbn = metadata.isbn;
+                if (!imageUrl && metadata.imageUrl) imageUrl = metadata.imageUrl;
+            }
+        } catch (e) { console.error('Metadata fetch failed:', e); }
     }
 
     const genreArray = genres ? genres.split(',').map(g => g.trim()).filter(g => g) : [];
@@ -877,22 +1334,42 @@ router.post('/add', upload.single('imageFile'), (req, res) => {
 });
 
 // POST /edit/:id
-router.post('/edit/:id', upload.single('imageFile'), (req, res) => {
+router.post('/edit/:id', upload.single('imageFile'), async (req, res) => {
     let { title, author, pageCount, isbn, genres, startDate, endDate, rating, status } = req.body;
+
+    // Auto-Fetch for Edit too if fields are empty
+    if (!genres || !pageCount) {
+        try {
+            const metadata = await fetchBookMetadata(title, author);
+            if (metadata) {
+                if (!genres && metadata.genres.length > 0) genres = metadata.genres.join(', ');
+                if (!pageCount && metadata.pageCount) pageCount = metadata.pageCount;
+                if (!isbn && metadata.isbn) isbn = metadata.isbn;
+                // For edit, we only update image if they don't have one and didn't upload one, 
+                // but usually better to leave existing image alone unless explicitly requested.
+                // We'll skip auto-updating image on edit to prevent overwriting user's custom cover with generic one unnecessarily.
+            }
+        } catch (e) { console.error('Metadata fetch failed:', e); }
+    }
+
     const genreArray = genres ? genres.split(',').map(g => g.trim()).filter(g => g) : [];
 
     if (endDate === '') endDate = null;
     if (rating === '') rating = null;
 
-    let imageUrl = null;
-    let sql = `UPDATE books SET title=?, author=?, pageCount=?, isbn=?, genres=?, startDate=?, endDate=?, rating=?, status=?`;
-    let params = [title, author, pageCount, isbn, JSON.stringify(genreArray), startDate, endDate, rating, status];
-
     if (req.file) {
         imageUrl = '/uploads/' + req.file.filename;
         sql += `, imageUrl=?`;
         params.push(imageUrl);
+    } else if (req.body.imageUrl) {
+        // If no new file uploaded, but we have a URL from the search (hidden input)
+        // We update it. Note: If it's empty, we might not want to clear it unless intended.
+        // Assuming if hidden input has text, it's a new URL selected from search.
+        imageUrl = req.body.imageUrl;
+        sql += `, imageUrl=?`;
+        params.push(imageUrl);
     }
+    // Note: We don't verify if 'imageUrl' was fetched because we decided not to auto-update image on edit to be safe.
 
     sql += ` WHERE id = ?`;
     params.push(req.params.id);
@@ -1024,6 +1501,137 @@ router.post('/import', upload.single('csvFile'), (req, res) => {
 
             res.redirect('/books');
         });
+});
+
+// POST /progress/:id - Log Reading Session & Update Page
+router.post('/progress/:id', (req, res) => {
+    const bookId = req.params.id;
+    const { pages, currentPage } = req.body;
+    const today = new Date().toISOString().split('T')[0];
+
+    const book = db.prepare("SELECT * FROM books WHERE id = ?").get(bookId);
+    if (!book) return res.redirect('/books');
+
+    // Scenario 1: Adding a session (e.g. read 20 pages today)
+    if (pages) {
+        const pagesInt = parseInt(pages);
+        if (pagesInt > 0) {
+            db.prepare("INSERT INTO reading_sessions (book_id, date, pages) VALUES (?, ?, ?)").run(bookId, today, pagesInt);
+            // Auto-update current page (Handle NULL with COALESCE)
+            db.prepare("UPDATE books SET currentPage = COALESCE(currentPage, 0) + ? WHERE id = ?").run(pagesInt, bookId);
+        }
+    }
+
+    // Scenario 2: Manual Override (Setting absolute page number)
+    if (currentPage !== undefined && currentPage !== '') {
+        const currentInt = parseInt(currentPage);
+        db.prepare("UPDATE books SET currentPage = ? WHERE id = ?").run(currentInt, bookId);
+    }
+
+    // Check completion
+    const updatedBook = db.prepare("SELECT * FROM books WHERE id = ?").get(bookId);
+    if (updatedBook.pageCount && updatedBook.currentPage >= updatedBook.pageCount) {
+        // Optional: Auto-mark as read? For now, let user decide.
+    }
+
+    res.redirect('/books');
+});
+
+// GET /stats - Reading Statistics
+router.get('/stats', (req, res) => {
+    const currentYear = new Date().toISOString().split('T')[0].substring(0, 4);
+
+    // 1. Daily Reading Trend (Last 30 days)
+    const sessions = db.prepare(`
+        SELECT date, SUM(pages) as total_pages 
+        FROM reading_sessions 
+        WHERE date >= date('now', '-30 days') 
+        GROUP BY date 
+        ORDER BY date ASC
+    `).all();
+
+    // 2. Total Stats
+    const totalRead = db.prepare("SELECT SUM(pages) as count FROM reading_sessions").get().count || 0;
+    const thisYearRead = db.prepare("SELECT SUM(pages) as count FROM reading_sessions WHERE date LIKE ?").get(`${currentYear}%`).count || 0;
+
+    // 3. Completion Estimates
+    const currentBooks = db.prepare("SELECT * FROM books WHERE status = 'reading'").all();
+    // Calculate avg speed (pages/day) from last 7 active reading days
+    const recentActivity = db.prepare(`
+        SELECT AVG(daily_pages) as speed FROM (
+            SELECT SUM(pages) as daily_pages FROM reading_sessions 
+            WHERE date >= date('now', '-14 days') 
+            GROUP BY date
+        )
+    `).get();
+    const avgSpeed = recentActivity ? Math.round(recentActivity.speed || 0) : 0;
+
+    const estimates = currentBooks.map(b => {
+        const remaining = (b.pageCount || 0) - (b.currentPage || 0);
+        const daysLeft = avgSpeed > 0 ? Math.ceil(remaining / avgSpeed) : '?';
+        return { title: b.title, remaining, daysLeft };
+    });
+
+    res.send(renderPage(`
+        <div id="section-stats" class="app-section" style="display:block;">
+            <div class="section-title">Okuma İstatistikleri</div>
+
+            <!-- Summary Cards -->
+            <div class="stats-bar" style="margin-bottom:2rem; background:rgba(0,0,0,0.2);">
+                <div class="stat-item">
+                    <div class="stat-value" style="color:var(--da-accent-orange);">${totalRead}</div>
+                    <div class="stat-label">Toplam Okunan Sayfa</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-value" style="color:var(--da-text-cream);">${thisYearRead}</div>
+                    <div class="stat-label">Bu Yıl (${currentYear})</div>
+                </div>
+                 <div class="stat-item">
+                    <div class="stat-value" style="color:#a8d5ba;">${avgSpeed}</div>
+                    <div class="stat-label">Ort. Hız (Sayfa/Gün)</div>
+                </div>
+            </div>
+
+            <div style="display:grid; grid-template-columns: 2fr 1fr; gap:2rem;">
+                <!-- Chart Area -->
+                <div class="card">
+                    <h3>Son 30 Günlük Okuma Grafiği</h3>
+                    <div style="display:flex; align-items:flex-end; height:200px; gap:4px; padding-top:20px; border-bottom:1px solid rgba(255,255,255,0.1);">
+                        ${sessions.length > 0 ? sessions.map(s => `
+                            <div style="flex:1; background:var(--da-accent-orange); opacity:0.8; border-radius:2px 2px 0 0; min-width:4px; 
+                                        height:${Math.min(100, (s.total_pages / 100) * 100)}%; position:relative; transition:height 0.3s;" 
+                                        title="${s.date}: ${s.total_pages} sayfa">
+                            </div>
+                        `).join('') : '<div style="width:100%; text-align:center; color:#666; align-self:center;">Henüz veri yok</div>'}
+                    </div>
+                    <div style="display:flex; justify-content:space-between; margin-top:5px; font-size:0.7rem; color:#666;">
+                        <span>-30 Gün</span>
+                        <span>Bugün</span>
+                    </div>
+                </div>
+
+                <!-- Estimates -->
+                <div class="card">
+                    <h3>Tahmini Bitiş Süreleri</h3>
+                    ${estimates.length > 0 ? estimates.map(e => `
+                        <div style="margin-bottom:1rem; padding-bottom:0.5rem; border-bottom:1px solid rgba(255,255,255,0.05);">
+                            <div style="font-weight:bold; color:var(--da-text-cream);">${e.title}</div>
+                            <div style="font-size:0.85rem; color:var(--da-text-muted);">
+                                ${e.remaining} sayfa kaldı 
+                                <span style="float:right; color:${e.daysLeft === '?' ? '#666' : 'var(--da-accent-orange)'};">
+                                    ${e.daysLeft === '?' ? 'Yetersiz Veri' : `~${e.daysLeft} Gün`}
+                                </span>
+                            </div>
+                        </div>
+                    `).join('') : '<p style="color:#666;">Şu an okunan kitap yok.</p>'}
+                </div>
+            </div>
+            
+             <div style="margin-top:2rem;">
+                  <a href="/books" class="btn-da">← Kütüphaneye Dön</a>
+             </div>
+        </div>
+    `));
 });
 
 module.exports = router;

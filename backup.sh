@@ -22,4 +22,14 @@ echo "✅ Backup created: $BACKUP_FILE"
 echo "🧹 Cleaning up old backups (keeping last 7)..."
 ls -t "$BACKUP_DIR"/exlibris_backup_*.tar.gz | tail -n +8 | xargs -r rm --
 
+# Cloud Sync (Google Drive)
+# Checks if 'gdrive' remote is configured in rclone
+if command -v rclone &> /dev/null && rclone listremotes | grep -q "gdrive:"; then
+    echo "☁️ Syncing to Google Drive..."
+    rclone copy "$BACKUP_DIR" "gdrive:ExLibrisBackups"
+    echo "✅ Cloud sync completed!"
+else
+    echo "⚠️ Rclone not configured or 'gdrive' remote missing. Skipping cloud sync."
+fi
+
 echo "✨ Done!"

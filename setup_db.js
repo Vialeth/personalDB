@@ -17,9 +17,25 @@ filmsDb.exec(`
         year INTEGER,
         rating REAL,
         description TEXT,
-        imageUrl TEXT
+        imageUrl TEXT,
+        genres TEXT,
+        watchDate TEXT,
+        isCinema INTEGER DEFAULT 0
     )
 `);
+
+// Migration for Films
+try {
+    const columns = filmsDb.prepare('PRAGMA table_info(films)').all();
+    const columnNames = columns.map(c => c.name);
+
+    if (!columnNames.includes('genres')) filmsDb.exec('ALTER TABLE films ADD COLUMN genres TEXT');
+    if (!columnNames.includes('watchDate')) filmsDb.exec('ALTER TABLE films ADD COLUMN watchDate TEXT');
+    if (!columnNames.includes('isCinema')) filmsDb.exec('ALTER TABLE films ADD COLUMN isCinema INTEGER DEFAULT 0');
+} catch (e) {
+    console.error('Film migration error:', e);
+}
+
 console.log('Films database initialized');
 
 // Books Database - NEW SCHEMA

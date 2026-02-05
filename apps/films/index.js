@@ -67,7 +67,8 @@ const getWatcherStats = () => {
 const renderPage = (content, title = 'Film Veritabanı', req = null) => {
     const editMode = req && req.query.edit === 'true';
     // Ensure we use the full path including mount point (/films)
-    const currentPath = req ? (req.baseUrl + req.path) : '/films';
+    let currentPath = req ? (req.baseUrl + req.path) : '/films';
+    if (currentPath.endsWith('/') && currentPath.length > 1) currentPath = currentPath.slice(0, -1);
 
     // Construct toggle link preserving other query params
     let toggleUrl = currentPath;
@@ -246,7 +247,7 @@ const renderFilmGrid = (films, editMode = false, stats = {}) => {
 };
 
 // Helper: Render Form (Shared for Add & Edit)
-const renderForm = (film = null) => {
+const renderForm = (film = null, returnUrl = '') => {
     const isEdit = !!film;
     const action = isEdit ? `/films/edit/${film.id}` : '/films/add';
     const title = isEdit ? 'BİLETİ DÜZENLE' : 'YENİ GİRİŞ';
@@ -262,6 +263,7 @@ const renderForm = (film = null) => {
         <div class="form-container">
             <h2 style="font-family:var(--ch-font-display); color:var(--ch-neon-red); margin-top:0;">${title}</h2>
             <form action="${action}" method="POST" enctype="multipart/form-data">
+                <input type="hidden" name="returnUrl" value="${returnUrl}">
                 <div class="form-group">
                     <label class="cinema-label">FİLM ADI</label>
                     <div style="display:flex; gap:10px;">
@@ -1018,14 +1020,15 @@ router.get('/add', (req, res) => {
             }
         </script>
 `;
-    res.send(renderPage(renderForm() + importForm, 'Film Ekle'));
+    res.send(renderPage(renderForm() + importForm, 'Film Ekle', req));
 });
 
 // GET /edit/:id
 router.get('/edit/:id', (req, res) => {
     const film = db.prepare('SELECT * FROM films WHERE id = ?').get(req.params.id);
     if (!film) return res.redirect('/films');
-    res.send(renderPage(renderForm(film), 'Film Düzenle'));
+    const returnUrl = req.get('Referer') || '/films';
+    res.send(renderPage(renderForm(film, returnUrl), 'Film Düzenle', req));
 });
 
 // POST /add
@@ -1123,7 +1126,8 @@ title = ?, director = ?, year = ?, rating = ?, description = ?, genres = ?, watc
     `);
 
     update.run(...params);
-    res.redirect('/films');
+    const returnUrl = req.body.returnUrl;
+    res.redirect(returnUrl || '/films');
 });
 
 // POST /import - CSV Import
@@ -1176,9 +1180,20 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, 0)
                     // Parse Date
                     let watchDate = '';
                     if (kDate && row[kDate]) {
-                        const parts = row[kDate].split('/');
+                        // Clean the string
+                        let dStr = row[kDate].trim();
+                        // Try various formats
+                        // 1. DD/MM/YYYY or DD.MM.YYYY or DD-MM-YYYY
+                        const parts = dStr.split(/[\/\.\-]/);
                         if (parts.length === 3) {
-                            watchDate = `${parts[2]} -${parts[1]} -${parts[0]} `; // YYYY-MM-DD
+                            // Assume DD MM YYYY
+                            const day = parts[0].padStart(2, '0');
+                            const month = parts[1].padStart(2, '0');
+                            const year = parts[2];
+                            // Basic validation
+                            if (year.length === 4) {
+                                watchDate = `${year}-${month}-${day}`;
+                            }
                         }
                     }
 
@@ -1216,7 +1231,8 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, 0)
 router.post('/delete/:id', (req, res) => {
     const deleteParams = db.prepare('DELETE FROM films WHERE id = ?');
     deleteParams.run(req.params.id);
-    res.redirect('/films');
+    const referer = req.get('Referer');
+    res.redirect(referer || '/films');
 });
 
 module.exports = router;

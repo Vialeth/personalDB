@@ -493,7 +493,7 @@ const renderForm = (film = null, returnUrl = '') => {
                     // Populate Form
                     document.querySelector('input[name="title"]').value = movie.title;
                     document.querySelector('input[name="year"]').value = movie.release_date ? movie.release_date.split('-')[0] : '';
-                    document.querySelector('textarea[name="description"]').value = movie.overview;
+                    // document.querySelector('textarea[name="description"]').value = movie.overview;
                     document.querySelector('input[name="imageUrl"]').value = movie.poster_path ? '${TMDB_IMAGE_BASE}' + movie.poster_path : '';
                     
                     // Director from credits
@@ -503,7 +503,7 @@ const renderForm = (film = null, returnUrl = '') => {
                     }
                     
                     // Rating mapping (TMDB is 1-10, we behave same)
-                    document.querySelector('input[name="rating"]').value = movie.vote_average.toFixed(1);
+                    // document.querySelector('input[name="rating"]').value = movie.vote_average.toFixed(1);
                     
                     // Genres
                     const genres = movie.genres.map(g => g.name);

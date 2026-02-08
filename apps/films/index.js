@@ -1208,8 +1208,20 @@ router.post('/api/tools/fetch-missing', async (req, res) => {
             // Only try next stage if previous returned ZERO results
             // If we have 1+ results, they're likely correct - no need to search more
 
-            const originalTitle = film.title.trim();
-            const turkishTitle = film.title_tr ? film.title_tr.trim() : null;
+            // Helper: Clean title (decode URL encoding + trim)
+            const cleanupTitle = (title) => {
+                if (!title) return '';
+                try {
+                    // Decode URL encoding (e.g., "Dune 2021%20" → "Dune 2021 ")
+                    title = decodeURIComponent(title);
+                } catch (e) {
+                    // If decode fails, use original
+                }
+                return title.trim();
+            };
+
+            const originalTitle = cleanupTitle(film.title);
+            const turkishTitle = film.title_tr ? cleanupTitle(film.title_tr) : null;
 
             // Helper to strip year suffixes
             const stripYear = (title) => {

@@ -1265,6 +1265,15 @@ router.post('/api/tools/fetch-missing', async (req, res) => {
                 if (exactMatches.length === 1) winner = exactMatches[0];
             }
 
+            // D. Exact Title Match (Ignore Year - Absolute Fallback)
+            if (!winner) {
+                const titleStrictMatches = enrichedCandidates.filter(c =>
+                    c.original_title.toLowerCase() === film.title.toLowerCase() ||
+                    c.title.toLowerCase() === film.title.toLowerCase()
+                );
+                if (titleStrictMatches.length === 1) winner = titleStrictMatches[0];
+            }
+
             // 4. Action
             if (winner) {
                 // AUTO UPDATE

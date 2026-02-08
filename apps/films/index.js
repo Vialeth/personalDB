@@ -1210,8 +1210,14 @@ router.post('/api/tools/fetch-missing', async (req, res) => {
             // Always search by Title ONLY to get the best candidates.
             // Our Selection Logic (Director, Matches) will filter out the noise.
 
+            // CLEANUP: Some titles have year appended ("Ejderhayı Nasıl Eğitirsin 2025")
+            // Strip trailing year patterns before search
+            let cleanTitle = film.title.trim();
+            cleanTitle = cleanTitle.replace(/\s+\(?\d{4}\)?$/g, ''); // Remove " 2025", " (2025)", "(2025)"
+            cleanTitle = cleanTitle.replace(/\s+\[\d{4}\]$/g, '');   // Remove " [2025]", "[2025]"
+
             // A. Relaxed Search (Title only)
-            let candidates = await searchTMDB(film.title);
+            let candidates = await searchTMDB(cleanTitle);
 
             /* Old Strict Search Logic - Removed to fix Watch Year issue
             let candidates = await searchTMDB(film.title, film.year);

@@ -1204,31 +1204,52 @@ router.post('/api/tools/fetch-missing', async (req, res) => {
             // Skip if already has an image (User Request)
             if (film.imageUrl && film.imageUrl.trim() !== '') continue;
 
-            // 1. Search Strategy - Smart Dual Search
-            // Problem: Some titles have appended years ("Ejderhayı Nasıl Eğitirsin 2025")
-            // But some REAL titles contain years ("2012", "1917", "2001: A Space Odyssey")
-            // Solution: Try original first, fallback to cleaned version if needed
+            // 1. Search Strategy - Multi-Stage Smart Search
+            // Stage A: Original Title (English/International)
+            // Stage B: Year-Stripped Original
+            // Stage C: Turkish Title (if available and previous stages failed)
+            // Stage D: Year-Stripped Turkish
 
             const originalTitle = film.title.trim();
+            const turkishTitle = film.title_tr ? film.title_tr.trim() : null;
+
+            // Helper to strip year suffixes
+            const stripYear = (title) => {
+                return title.replace(/\s+\(?\d{4}\)?$/g, '').replace(/\s+\[\d{4}\]$/g, '').trim();
+            };
 
             // A. Primary Search (Original Title)
             let candidates = await searchTMDB(originalTitle);
 
-            // B. Fallback Search (if no/few results, try year-stripped title)
+            // B. Fallback 1: Year-Stripped Original (if few results)
             if (candidates.length <= 2) {
-                // Strip trailing year patterns: " 2025", " (2025)", "(2025)", " [2025]"
-                let cleanTitle = originalTitle.replace(/\s+\(?\d{4}\)?$/g, '').replace(/\s+\[\d{4}\]$/g, '').trim();
-
-                // Only search if strip actually changed something
+                const cleanTitle = stripYear(originalTitle);
                 if (cleanTitle !== originalTitle) {
                     const fallbackCandidates = await searchTMDB(cleanTitle);
-
-                    // Merge results (avoid duplicates by ID)
                     const existingIds = new Set(candidates.map(c => c.id));
                     for (const c of fallbackCandidates) {
-                        if (!existingIds.has(c.id)) {
-                            candidates.push(c);
-                        }
+                        if (!existingIds.has(c.id)) candidates.push(c);
+                    }
+                }
+            }
+
+            // C. Fallback 2: Turkish Title (if still few results and Turkish exists)
+            if (candidates.length <= 2 && turkishTitle && turkishTitle !== originalTitle) {
+                const turkishCandidates = await searchTMDB(turkishTitle);
+                const existingIds = new Set(candidates.map(c => c.id));
+                for (const c of turkishCandidates) {
+                    if (!existingIds.has(c.id)) candidates.push(c);
+                }
+            }
+
+            // D. Fallback 3: Year-Stripped Turkish (last resort)
+            if (candidates.length <= 2 && turkishTitle) {
+                const cleanTurkish = stripYear(turkishTitle);
+                if (cleanTurkish !== turkishTitle && cleanTurkish !== originalTitle) {
+                    const fallbackTurkish = await searchTMDB(cleanTurkish);
+                    const existingIds = new Set(candidates.map(c => c.id));
+                    for (const c of fallbackTurkish) {
+                        if (!existingIds.has(c.id)) candidates.push(c);
                     }
                 }
             }

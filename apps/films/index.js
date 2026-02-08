@@ -1437,9 +1437,19 @@ router.post('/api/tools/fetch-missing', async (req, res) => {
 // POST /api/tools/apply-match - Manually apply a TMDB match
 router.post('/api/tools/apply-match', async (req, res) => {
     const { filmId, tmdbId } = req.body;
+
+    console.log('=== APPLY-MATCH DEBUG ===');
+    console.log('Received filmId:', filmId, 'Type:', typeof filmId);
+    console.log('Received tmdbId:', tmdbId);
+
     try {
         const film = db.prepare("SELECT * FROM films WHERE id = ?").get(filmId);
-        if (!film) return res.json({ success: false, error: 'Film not found' });
+        console.log('Film found:', film ? `Yes (${film.title})` : 'NO - FILM NOT FOUND');
+
+        if (!film) {
+            console.error('Film NOT found in DB for ID:', filmId);
+            return res.json({ success: false, error: 'Film not found' });
+        }
 
         // Fetch details
         const url = `${TMDB_BASE_URL}/movie/${tmdbId}?api_key=${TMDB_API_KEY}&language=tr-TR&append_to_response=credits`;

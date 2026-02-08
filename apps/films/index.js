@@ -235,6 +235,58 @@ const renderPage = (content, titleKey = 'title_showcase', req = null) => {
                      alert('Hata: ' + err.message);
                 }
             }
+
+            function openEditModal(filmStr) {
+                const film = JSON.parse(decodeURIComponent(filmStr));
+                const isoDate = film.watchDate ? new Date(film.watchDate).toISOString().split('T')[0] : '';
+
+                document.getElementById('editId').value = film.id;
+                document.getElementById('editReturnUrl').value = window.location.pathname;
+                document.getElementById('editTitle').value = film.title;
+                document.getElementById('editTitleTr').value = film.title_tr || '';
+                document.getElementById('editDirector').value = film.director || '';
+                document.getElementById('editYear').value = film.year || '';
+                document.getElementById('editImageUrl').value = film.imageUrl || '';
+                document.getElementById('editRating').value = film.rating || '';
+                document.getElementById('editWatchDate').value = isoDate;
+                document.getElementById('editUserNotes').value = film.userNotes || '';
+                
+                document.getElementById('editIsCinema').checked = film.isCinema === 1;
+                document.getElementById('editIsHallOfFame').checked = film.isHallOfFame === 1;
+
+                const img = document.getElementById('editImagePreview');
+                if(film.imageUrl) {
+                    img.src = film.imageUrl;
+                    img.style.display = 'block';
+                } else {
+                    img.style.display = 'none';
+                }
+
+                document.getElementById('editFilmModal').showModal();
+            }
+
+            async function handleEditSubmit(e) {
+                e.preventDefault();
+                const form = e.target;
+                const formData = new FormData(form);
+
+                try {
+                     const res = await fetch('/films/edit/' + formData.get('id'), {
+                        method: 'POST',
+                        body: formData
+                    });
+
+                    if (res.redirected) {
+                        window.location.href = res.url;
+                    } else if (res.ok) {
+                        window.location.reload();
+                    } else {
+                        alert('Güncelleme başarısız!');
+                    }
+                } catch(err) {
+                    alert('Hata: ' + err.message);
+                }
+            }
         </script>
 
         <!-- FILM DETAIL MODAL -->

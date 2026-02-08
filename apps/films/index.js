@@ -414,12 +414,14 @@ const renderFilmGrid = (films, editMode = false, stats = {}, locale = 'tr') => {
         const genreHtml = genreList.slice(0, 3).map(g => `<span class="mini-tag">${g}</span>`).join('');
 
         const dateDisplay = film.watchDate ? new Date(film.watchDate).toLocaleDateString(locale === 'tr' ? 'tr-TR' : 'en-US', { year: 'numeric', month: 'short', day: 'numeric' }) : '';
+        const filmData = encodeURIComponent(JSON.stringify(film)).replace(/'/g, '%27');
+
         const editActions = editMode ? `
             <div class="btn-actions">
-                <a href="/films/edit/${film.id}" style="color:var(--ch-neon-cyan); font-size:0.8rem; text-decoration:none;">${t('edit', locale)}</a>
+                <button onclick="openEditModal('${filmData}')" style="background:none; border:none; color:var(--ch-neon-cyan); font-size:0.8rem; cursor:pointer; text-decoration:none;">${t('edit', locale)}</button>
                 <div class="delete-wrapper" style="display:inline-block; position:relative;">
                     <button type="button" onclick="toggleDelete(this, event)" style="background:none; border:none; color:#555; font-size:0.8rem; cursor:pointer; text-decoration:underline;">${t('delete', locale)}</button>
-                    <button type="button" onclick="confirmDelete(this, ${film.id}, event)" class="delete-confirm" style="display:none; background:var(--ch-neon-red); color:#fff; border:none; padding:2px 8px; border-radius:4px; font-size:0.75rem; cursor:pointer; margin-left:5px;">Check?</button>
+                    <button type="button" onclick="confirmDelete(this, ${film.id}, event)" class="delete-confirm" style="display:none; background:var(--ch-neon-red); color:#fff; border:none; padding:2px 8px; border-radius:4px; font-size:0.75rem; cursor:pointer; margin-left:5px;">Sil?</button>
                 </div>
             </div>
         ` : '';
@@ -436,7 +438,7 @@ const renderFilmGrid = (films, editMode = false, stats = {}, locale = 'tr') => {
         // Attach stats to film object for modal
         film.stats = filmStats;
 
-        const filmData = encodeURIComponent(JSON.stringify(film)).replace(/'/g, '%27');
+        // filmData was already encoded above
 
         return `
         <div class="film-card" onclick="openDetailModal('${filmData}')" style="cursor:pointer;">
@@ -1638,6 +1640,81 @@ router.get('/add', (req, res) => {
             <div id="ambiguityList" style="padding:1rem; overflow-y:auto; max-height:calc(80vh - 70px);"></div>
         </dialog>
 
+        <!-- EDIT MODAL -->
+        <dialog id="editFilmModal" style="background:var(--ch-bg-card); border:1px solid var(--ch-neon-cyan); color:#fff; padding:2rem; border-radius:8px; width:90%; max-width:600px; backdrop-filter:blur(10px); max-height:90vh; overflow-y:auto;">
+            <form id="editFilmForm" onsubmit="handleEditSubmit(event)">
+                <input type="hidden" name="id" id="editId">
+                <input type="hidden" name="returnUrl" id="editReturnUrl">
+                
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1.5rem;">
+                    <h3 style="margin:0; font-family:var(--ch-font-display); color:var(--ch-neon-cyan);">✏️ Filmi Düzenle</h3>
+                    <button type="button" onclick="document.getElementById('editFilmModal').close()" style="background:transparent; border:none; color:#aaa; font-size:1.5rem; cursor:pointer;">&times;</button>
+                </div>
+
+                <div style="display:grid; grid-template-columns: 1fr 1fr; gap:1rem;">
+                    <div>
+                        <label style="display:block; color:#aaa; margin-bottom:5px; font-size:0.8rem;">Film Adı</label>
+                        <input type="text" name="title" id="editTitle" required style="width:100%; padding:8px; background:#111; border:1px solid #444; color:#fff; border-radius:4px;">
+                    </div>
+                    <div>
+                        <label style="display:block; color:#aaa; margin-bottom:5px; font-size:0.8rem;">TR Adı</label>
+                        <input type="text" name="title_tr" id="editTitleTr" style="width:100%; padding:8px; background:#111; border:1px solid #444; color:#fff; border-radius:4px;">
+                    </div>
+                </div>
+
+                <div style="display:grid; grid-template-columns: 1fr 1fr; gap:1rem; margin-top:1rem;">
+                    <div>
+                        <label style="display:block; color:#aaa; margin-bottom:5px; font-size:0.8rem;">Yönetmen</label>
+                        <input type="text" name="director" id="editDirector" style="width:100%; padding:8px; background:#111; border:1px solid #444; color:#fff; border-radius:4px;">
+                    </div>
+                    <div>
+                        <label style="display:block; color:#aaa; margin-bottom:5px; font-size:0.8rem;">Yıl</label>
+                        <input type="number" name="year" id="editYear" style="width:100%; padding:8px; background:#111; border:1px solid #444; color:#fff; border-radius:4px;">
+                    </div>
+                </div>
+
+                <div style="margin-top:1rem;">
+                     <label style="display:block; color:#aaa; margin-bottom:5px; font-size:0.8rem;">Afiş URL</label>
+                     <div style="display:flex; gap:10px;">
+                        <input type="text" name="imageUrl" id="editImageUrl" style="flex:1; padding:8px; background:#111; border:1px solid #444; color:#fff; border-radius:4px;">
+                        <img id="editImagePreview" src="" style="width:40px; height:60px; object-fit:cover; display:none; border:1px solid #555;">
+                     </div>
+                </div>
+
+                <div style="display:grid; grid-template-columns: 1fr 1fr; gap:1rem; margin-top:1rem;">
+                    <div>
+                         <label style="display:block; color:#aaa; margin-bottom:5px; font-size:0.8rem;">Puan</label>
+                         <input type="number" name="rating" id="editRating" step="0.1" max="10" style="width:100%; padding:8px; background:#111; border:1px solid #444; color:#fff; border-radius:4px;">
+                    </div>
+                    <div>
+                         <label style="display:block; color:#aaa; margin-bottom:5px; font-size:0.8rem;">İzleme Tarihi</label>
+                         <input type="date" name="watchDate" id="editWatchDate" style="width:100%; padding:8px; background:#111; border:1px solid #444; color:#fff; border-radius:4px;">
+                    </div>
+                </div>
+                
+                 <div style="margin-top:1rem;">
+                     <label style="display:block; color:#aaa; margin-bottom:5px; font-size:0.8rem;">Kişisel Notlar</label>
+                     <textarea name="userNotes" id="editUserNotes" rows="3" style="width:100%; padding:8px; background:#111; border:1px solid #444; color:#fff; border-radius:4px; font-family:inherit;"></textarea>
+                </div>
+
+                <div style="margin-top:1rem; display:flex; gap:1rem; align-items:center;">
+                    <label style="display:flex; align-items:center; gap:5px; cursor:pointer;">
+                        <input type="checkbox" name="isCinema" id="editIsCinema">
+                        <span style="font-size:0.9rem;">Sinemada İzlendi</span>
+                    </label>
+                    <label style="display:flex; align-items:center; gap:5px; cursor:pointer;">
+                        <input type="checkbox" name="isHallOfFame" id="editIsHallOfFame">
+                        <span style="font-size:0.9rem;">Hall of Fame</span>
+                    </label>
+                </div>
+
+                <div style="margin-top:2rem; display:flex; justify-content:flex-end; gap:1rem;">
+                    <button type="button" onclick="document.getElementById('editFilmModal').close()" style="background:transparent; border:1px solid #555; color:#aaa; padding:0.5rem 1rem; cursor:pointer; border-radius:4px;">İptal</button>
+                    <button type="submit" class="btn-cinema" style="border:none; padding:0.5rem 1.5rem; cursor:pointer; color:var(--ch-neon-cyan); border:1px solid var(--ch-neon-cyan);">Kaydet</button>
+                </div>
+            </form>
+        </dialog>
+
         <script>
             // ... (keep existing scripts) ...
             let ambiguousFilms = [];
@@ -1752,6 +1829,64 @@ router.get('/add', (req, res) => {
 
                 } catch(e) {
                     alert('Hata oluştu: ' + e.message);
+                }
+            }
+
+            function openEditModal(filmStr) {
+                const film = JSON.parse(decodeURIComponent(filmStr));
+                const isoDate = film.watchDate ? new Date(film.watchDate).toISOString().split('T')[0] : '';
+
+                document.getElementById('editId').value = film.id;
+                document.getElementById('editReturnUrl').value = window.location.pathname;
+                document.getElementById('editTitle').value = film.title;
+                document.getElementById('editTitleTr').value = film.title_tr || '';
+                document.getElementById('editDirector').value = film.director || '';
+                document.getElementById('editYear').value = film.year || '';
+                document.getElementById('editImageUrl').value = film.imageUrl || '';
+                document.getElementById('editRating').value = film.rating || '';
+                document.getElementById('editWatchDate').value = isoDate;
+                document.getElementById('editUserNotes').value = film.userNotes || '';
+                
+                document.getElementById('editIsCinema').checked = film.isCinema === 1;
+                document.getElementById('editIsHallOfFame').checked = film.isHallOfFame === 1;
+
+                const img = document.getElementById('editImagePreview');
+                if(film.imageUrl) {
+                    img.src = film.imageUrl;
+                    img.style.display = 'block';
+                } else {
+                    img.style.display = 'none';
+                }
+
+                document.getElementById('editFilmModal').showModal();
+            }
+
+            async function handleEditSubmit(e) {
+                e.preventDefault();
+                const form = e.target;
+                const formData = new FormData(form);
+                // Backend expects specific fields. 
+                // Convert FormData to JSON/UrlEncoded? 
+                // Backend uses body-parser (urlencoded) and multer.
+                // Fetch with FormData automatically sets Content-Type to multipart/form-data boundary.
+                // But /edit/:id route uses upload.single('image'). 
+                // Even if we don't send a file, it should work.
+
+                try {
+                     const res = await fetch('/films/edit/' + formData.get('id'), {
+                        method: 'POST',
+                        body: formData // Sends as multipart/form-data
+                    });
+
+                    if (res.redirected) {
+                        window.location.href = res.url;
+                    } else if (res.ok) {
+                        window.location.reload();
+                    } else {
+                        alert('Güncelleme başarısız!');
+                    }
+                } catch(err) {
+                    alert('Hata: ' + err.message);
                 }
             }
 
@@ -2231,16 +2366,30 @@ router.post('/import/process', (req, res) => {
 // POST /delete/:id
 // POST /delete/:id
 router.post('/delete/:id', (req, res) => {
-    const deleteParams = db.prepare('DELETE FROM films WHERE id = ?');
-    deleteParams.run(req.params.id);
+    try {
+        const deleteParams = db.prepare('DELETE FROM films WHERE id = ?');
+        const info = deleteParams.run(req.params.id);
 
-    // Check if JSON requested (AJAX)
-    if (req.headers.accept && req.headers.accept.includes('application/json')) {
-        return res.json({ success: true });
+        if (info.changes === 0) {
+            if (req.headers.accept && req.headers.accept.includes('application/json')) {
+                return res.status(404).json({ success: false, error: 'Film bulunamadı' });
+            }
+        }
+
+        // Check if JSON requested (AJAX)
+        if (req.headers.accept && req.headers.accept.includes('application/json')) {
+            return res.json({ success: true });
+        }
+
+        const referer = req.get('Referer');
+        res.redirect(referer || '/films');
+    } catch (e) {
+        console.error('Delete Error:', e);
+        if (req.headers.accept && req.headers.accept.includes('application/json')) {
+            return res.status(500).json({ success: false, error: e.message });
+        }
+        res.status(500).send('Silme işlemi başarısız: ' + e.message);
     }
-
-    const referer = req.get('Referer');
-    res.redirect(referer || '/films');
 });
 
 

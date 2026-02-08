@@ -138,9 +138,9 @@ const renderPage = (content, titleKey = 'title_showcase', req = null) => {
                     <button onclick="setLang('en')" style="background:none; border:none; color:${locale === 'en' ? '#fff' : '#888'}; cursor:pointer; font-weight:bold;">EN</button>
                 </div>
                 
-                <button onclick="toggleEditMode()" class="control-btn ${editMode ? 'active' : ''}" title="${editMode ? t('edit_off', locale) : t('edit_mode', locale)}" style="background:none; border:none; color:inherit; cursor:pointer; font-size:inherit;">
+                <a href="${toggleUrl}" class="control-btn ${editMode ? 'active' : ''}" title="${editMode ? t('edit_off', locale) : t('edit_mode', locale)}">
                     ${editMode ? '🔒' : '✏️'}
-                </button>
+                </a>
                 <a href="/" class="control-btn exit-btn" title="${t('exit', locale)}">⏏</a>
             </div>
         </header>

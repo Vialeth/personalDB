@@ -6,6 +6,7 @@ const multer = require('multer');
 const fs = require('fs');
 const csv = require('csv-parser');
 const https = require('https');
+const { t, getLocale } = require('../../utils/i18n');
 
 const db = new Database(path.join(__dirname, '../../database/books.db'));
 
@@ -235,9 +236,13 @@ function formatDate(dateStr) {
 }
 
 // Helper for layout
-const renderPage = (content, allBooks = []) => `
+const renderPage = (content, allBooks = [], locale = 'tr') => {
+    // Language Switcher Logic
+    const setLang = (l) => `document.cookie='lang=${l};path=/;max-age=31536000';window.location.reload()`;
+
+    return `
 <!DOCTYPE html>
-<html lang="en">
+<html lang="${locale}">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -278,7 +283,7 @@ const renderPage = (content, allBooks = []) => `
         window.addEventListener('DOMContentLoaded', toggleStatusFields);
 
         async function runAutoFetch() {
-            if(!confirm('Bu işlem eksik bilgileri (Kapak, Sayfa, ISBN, Tür) internetten tarayarak dolduracak. Devam edilsin mi?')) return;
+            if(!confirm('${t('confirm_scan', locale).replace(/'/g, "\\'")}')) return;
 
             // Find all buttons that trigger this (handle multiple)
             const btns = document.querySelectorAll('.btn-auto-fetch');
@@ -289,26 +294,26 @@ const renderPage = (content, allBooks = []) => `
                 b.innerText = 'Taranıyor...';
             });
             
-            if(status) status.innerText = 'Lütfen bekleyin, kitaplar taranıyor...';
+            if(status) status.innerText = '${t('loading_msg', locale)}';
 
             try {
                 const res = await fetch('/books/api/tools/fetch-missing', { method: 'POST' });
                 const data = await res.json();
                 
                 if(data.success) {
-                    if(status) status.innerText = 'Tamamlandı!';
-                    alert('İşlem Başarılı!\\nTaranan: ' + data.total + '\\nGüncellenen: ' + data.updated);
+                    if(status) status.innerText = '${t('completed', locale)}!';
+                    alert('${t('success', locale)}!\\n${t('scanned', locale)}: ' + data.total + '\\n${t('updated', locale)}: ' + data.updated);
                     window.location.reload();
                 } else {
                     throw new Error(data.error || 'Bilinmeyen hata');
                 }
             } catch(e) {
-                if(status) status.innerText = 'Hata oluştu.';
-                alert('Hata: ' + e.message);
+                if(status) status.innerText = '${t('error', locale)}.';
+                alert('${t('error', locale)}: ' + e.message);
             } finally {
                 btns.forEach(b => {
                     b.disabled = false;
-                    b.innerText = '⚡ Eksik Verileri Tamamla';
+                    b.innerText = '${t('auto_fetch_btn', locale)}';
                 });
             }
         }
@@ -701,15 +706,21 @@ const renderPage = (content, allBooks = []) => `
 <body class="book-theme">
     <div class="container">
         <nav style="display: flex; justify-content: space-between; align-items: center;">
-            <div style="font-family: var(--da-font-display); font-size: 1.5rem;">
+            <div style="font-family: var(--da-font-display); font-size: 1.5rem; display:flex; align-items:center;">
                 <a href="/" style="text-decoration:none; margin-right: 1rem;">🏠</a>
-                <span>Ex Libris</span>
+                <span style="margin-right:1rem;">Ex Libris</span>
+                <!-- Language Switcher -->
+                <div style="font-size:0.8rem; display:flex; gap:0.5rem; border:1px solid var(--da-border); padding:0.2rem 0.5rem; border-radius:4px;">
+                    <span onclick="${setLang('tr')}" style="cursor:pointer; font-weight:${locale === 'tr' ? 'bold' : 'normal'}; color:${locale === 'tr' ? 'var(--da-accent-orange)' : '#888'}">TR</span>
+                    <span style="color:#444;">|</span>
+                    <span onclick="${setLang('en')}" style="cursor:pointer; font-weight:${locale === 'en' ? 'bold' : 'normal'}; color:${locale === 'en' ? 'var(--da-accent-orange)' : '#888'}">EN</span>
+                </div>
             </div>
             <div style="display: flex; gap: 2rem;">
-                <a href="/books?section=home" class="nav-link">Vitrin</a>
-                <a href="/books/stats" class="nav-link">İstatistik</a>
-                <a href="/books?section=library" class="nav-link">Kütüphane</a>
-                <a href="/books?section=add" class="nav-link">Kitap Ekle</a>
+                <a href="/books?section=home" class="nav-link">${t('book_nav_showcase', locale)}</a>
+                <a href="/books/stats" class="nav-link">${t('book_nav_stats', locale)}</a>
+                <a href="/books?section=library" class="nav-link">${t('book_nav_library', locale)}</a>
+                <a href="/books?section=add" class="nav-link">${t('book_nav_add', locale)}</a>
             </div>
         </nav>
 
@@ -718,20 +729,20 @@ const renderPage = (content, allBooks = []) => `
         <!-- Rating Modal -->
         <div id="rating-modal" class="modal">
             <div class="modal-content">
-                <h3 id="modal-title" style="margin-top:0;">Puanla</h3>
+                <h3 id="modal-title" style="margin-top:0;">${t('rate', locale)}</h3>
                 <form id="rating-form" method="POST">
                     <input type="hidden" name="action" id="modal-action-input">
                     <div style="margin-bottom: 1.5rem;">
-                        <label style="display:block; margin-bottom:0.5rem; color: var(--da-text-muted);">Puanınız (0-10)</label>
+                        <label style="display:block; margin-bottom:0.5rem; color: var(--da-text-muted);">${t('book_rating_label', locale)} (0-10)</label>
                         <input type="number" name="rating" step="0.1" min="0" max="10" class="filter-input" style="width: 100px; text-align: center; font-size: 1.2rem;" autofocus>
                     </div>
                      <div style="margin-bottom: 1.5rem;">
-                        <label style="display:block; margin-bottom:0.5rem; color: var(--da-text-muted);">Bitiş Tarihi</label>
+                        <label style="display:block; margin-bottom:0.5rem; color: var(--da-text-muted);">${t('book_end_date_label', locale)}</label>
                         <input type="date" name="endDate" class="filter-input" value="${new Date().toISOString().split('T')[0]}">
                     </div>
                     <div class="modal-buttons">
-                        <button type="button" class="btn-da" onclick="closeRatingModal()">İptal</button>
-                        <button type="submit" class="btn-da btn-da-primary">Kaydet</button>
+                        <button type="button" class="btn-da" onclick="closeRatingModal()">${t('cancel', locale)}</button>
+                        <button type="submit" class="btn-da btn-da-primary">${t('save', locale)}</button>
                     </div>
                 </form>
             </div>
@@ -742,7 +753,7 @@ const renderPage = (content, allBooks = []) => `
         <dialog id="bookDetailDialog" style="padding:0; border:1px solid var(--da-accent-orange); border-radius:8px; background:var(--da-panel-wood); color:var(--da-text-cream); width:90%; max-width:700px; backdrop-filter:blur(10px); box-shadow:0 20px 50px rgba(0,0,0,0.8);">
             
              <!-- Close Button (Absolute) -->
-            <button type="button" onclick="document.getElementById('bookDetailDialog').close()" style="position:absolute; top:10px; right:15px; background:none; border:none; color:var(--da-text-muted); cursor:pointer; font-size:2rem; z-index:10; line-height:1;">&times;</button>
+             <button type="button" onclick="document.getElementById('bookDetailDialog').close()" style="position:absolute; top:10px; right:15px; background:none; border:none; color:var(--da-text-muted); cursor:pointer; font-size:2rem; z-index:10; line-height:1;">&times;</button>
 
             <div style="display:flex; flex-direction:column;">
                 <div style="display:flex; flex-wrap:wrap; padding:2.5rem 2rem 2rem 2rem; gap:2rem;">
@@ -763,25 +774,25 @@ const renderPage = (content, allBooks = []) => `
                         
                         <div style="display:grid; grid-template-columns:1fr 1fr; gap:1rem; margin-bottom:1.5rem; background:rgba(0,0,0,0.2); padding:1rem; border-radius:4px;">
                             <div>
-                                <div class="detail-label">Sayfa</div>
+                                <div class="detail-label">${t('book_page_count_label', locale)}</div>
                                 <div id="detail-pageCount" style="font-size:1.1rem;"></div>
                             </div>
                             <div>
-                                <div class="detail-label">ISBN</div>
+                                <div class="detail-label">${t('book_isbn_label', locale)}</div>
                                 <div id="detail-isbn" style="font-size:1.1rem;"></div>
                             </div>
                             <div style="grid-column:span 2;">
-                                <div class="detail-label">Tarih Aralığı</div>
+                                <div class="detail-label">${t('date_range', locale)}</div>
                                 <div id="detail-dates" style="font-size:1.1rem;"></div>
                             </div>
                         </div>
                         
-                        <div class="detail-label">Türler</div>
+                        <div class="detail-label">${t('book_genres_label', locale)}</div>
                         <div id="detail-genres" style="margin-bottom:2rem;"></div>
                         
                         <div style="display:flex; gap:1rem; margin-top:auto;">
-                            <a id="detail-edit-link" class="btn-da">Düzenle</a>
-                            <button id="detail-delete-btn" class="btn-da btn-da-danger">Sil</button>
+                            <a id="detail-edit-link" class="btn-da">${t('edit', locale)}</a>
+                            <button id="detail-delete-btn" class="btn-da btn-da-danger">${t('delete', locale)}</button>
                         </div>
                     </div>
                 </div>
@@ -791,12 +802,12 @@ const renderPage = (content, allBooks = []) => `
         <!-- Delete Modal -->
         <div id="delete-modal" class="modal">
             <div class="modal-content">
-                <h3 style="margin-top:0; color: var(--da-accent-red)">Kitabı Sil</h3>
+                <h3 style="margin-top:0; color: var(--da-accent-red)">${t('delete', locale)}</h3>
                 <p id="delete-msg" style="color: var(--da-text-cream); margin-bottom: 1.5rem;"></p>
                 <form id="delete-form" method="POST">
                     <div class="modal-buttons">
-                        <button type="button" class="btn-da" onclick="closeDeleteModal()">Vazgeç</button>
-                        <button type="submit" class="btn-da btn-da-danger">Sil</button>
+                        <button type="button" class="btn-da" onclick="closeDeleteModal()">${t('cancel', locale)}</button>
+                        <button type="submit" class="btn-da btn-da-danger">${t('delete', locale)}</button>
                     </div>
                 </form>
             </div>
@@ -810,6 +821,7 @@ const renderPage = (content, allBooks = []) => `
 </body>
 </html>
 `;
+};
 
 // Shared Data Fetcher
 function getCommonData(req) {
@@ -895,6 +907,7 @@ function getCommonData(req) {
 
 // Handler for Main Page (Normal View or Edit View)
 function serveApp(req, res, editBookId = null) {
+    const locale = getLocale(req);
     const data = getCommonData(req);
     const { currentReads, annualBooks, currentYear, totalBooks, totalPages, avgRating, allBooks } = data;
 
@@ -943,16 +956,16 @@ function serveApp(req, res, editBookId = null) {
                 </div>
 
                 <div class="read-progress">
-                    <span>${b.pageCount ? b.pageCount + ' pages' : 'Unknown length'}</span>
+                    <span>${b.pageCount ? b.pageCount + ' ' + t('pages', locale).toLowerCase() : t('unknown_length', locale)}</span>
                 </div>
                 <div style="margin-top: auto; display: flex; gap: 0.5rem;">
                     <a href="/books/edit/${b.id}" class="btn-da" style="text-decoration:none; text-align:center; padding-top:0.3rem;">✎</a>
-                    <button type="button" class="btn-da btn-da-primary" onclick="openRatingModal(${b.id}, 'finish', event)">Bitir</button>
-                    <button type="button" class="btn-da" onclick="openRatingModal(${b.id}, 'drop', event)">Bırak</button>
+                    <button type="button" class="btn-da btn-da-primary" onclick="openRatingModal(${b.id}, 'finish', event)">${t('finish', locale)}</button>
+                    <button type="button" class="btn-da" onclick="openRatingModal(${b.id}, 'drop', event)">${t('drop', locale)}</button>
                 </div>
             </div>
         </div>
-    `).join('') : '<p style="color:var(--da-text-muted); font-style:italic;">Şu anda okunan kitap yok.</p>';
+    `).join('') : `<p style="color:var(--da-text-muted); font-style:italic;">${t('no_reading_now', locale)}</p>`;
 
     const shelfHtml = annualBooks.map(b => `
         <div class="collection-item" onclick="openBookDetail(${b.id})">
@@ -980,40 +993,40 @@ function serveApp(req, res, editBookId = null) {
 
                 <!-- Minimized View Info -->
                 <div style="margin-top:0.5rem; display:flex; justify-content:space-between; align-items:flex-end;">
-                     <span class="status-chip status-${b.status}" style="font-size:0.65em; padding:0.1rem 0.4rem;">${b.status}</span>
+                     <span class="status-chip status-${b.status}" style="font-size:0.65em; padding:0.1rem 0.4rem;">${t('book_status_' + b.status, locale).toUpperCase()}</span>
                      ${b.endDate ? `<span style="font-size:0.75rem; color:var(--da-text-muted); font-style:italic;">${b.endDate}</span>` : ''}
                 </div>
 
                 <!-- Expanded Details -->
                 <div class="library-details">
                     <div class="detail-row">
-                        <span class="detail-label">Sayfa</span>
+                        <span class="detail-label">${t('book_page_count_label', locale)}</span>
                         <span>${b.pageCount || '-'}</span>
                     </div>
                      <div class="detail-row">
-                        <span class="detail-label">ISBN</span>
+                        <span class="detail-label">${t('book_isbn_label', locale)}</span>
                         <span>${b.isbn || '-'}</span>
                     </div>
                      <div class="detail-row">
-                        <span class="detail-label">Başlama</span>
+                        <span class="detail-label">${t('book_start_date_label', locale)}</span>
                         <span>${formatDate(b.startDate)}</span>
                     </div>
                      <div class="detail-row">
-                        <span class="detail-label">Bitiş</span>
+                        <span class="detail-label">${t('book_end_date_label', locale)}</span>
                         <span>${formatDate(b.endDate) || '-'}</span>
                     </div>
                      <div class="detail-row full-width">
-                        <span class="detail-label">Türler</span>
+                        <span class="detail-label">${t('book_genres_label', locale)}</span>
                         <span>${b.genres ? JSON.parse(b.genres).join(', ') : '-'}</span>
                     </div>
                 </div>
 
                 <!-- Actions (visible in Edit Mode) -->
                 <div class="card-actions">
-                     <a href="/books/edit/${b.id}" class="action-btn edit" title="Düzenle">✎</a>
+                     <a href="/books/edit/${b.id}" class="action-btn edit" title="${t('edit', locale)}">✎</a>
                      <div class="delete-wrapper" style="display:inline-block; position:relative;">
-                        <button type="button" onclick="toggleDelete(this, ${b.id}, event)" class="action-btn delete" title="Sil">✕</button>
-                        <button type="button" onclick="confirmDelete(this, ${b.id}, event)" class="action-btn delete-confirm" style="display:none; background:var(--da-accent-orange); color:#fff; border:none; padding:5px 10px; border-radius:4px; font-size:0.8rem; cursor:pointer; margin-left:5px;">Emin misin?</button>
+                        <button type="button" onclick="toggleDelete(this, ${b.id}, event)" class="action-btn delete" title="${t('delete', locale)}">✕</button>
+                        <button type="button" onclick="confirmDelete(this, ${b.id}, event)" class="action-btn delete-confirm" style="display:none; background:var(--da-accent-orange); color:#fff; border:none; padding:5px 10px; border-radius:4px; font-size:0.8rem; cursor:pointer; margin-left:5px;">${t('confirm_delete', locale)}</button>
                      </div>
                 </div>
             </div>
@@ -1034,20 +1047,20 @@ function serveApp(req, res, editBookId = null) {
         activeSectionInfo = { home: 'block', lib: 'none', add: 'none' };
     }
 
-    const formTitle = bookToEdit ? 'Kitabı Düzenle' : 'Manuel Giriş';
+    const formTitle = bookToEdit ? t('edit', locale) : t('manual_add_btn', locale);
     const formAction = bookToEdit ? `/books/edit/${bookToEdit.id}` : '/books/add';
-    const formBtnText = bookToEdit ? 'Güncelle' : 'Kaydet';
+    const formBtnText = bookToEdit ? t('update', locale) : t('save', locale);
     const b = bookToEdit || {};
 
     res.send(renderPage(`
         <!-- SECTION A: VITRIN -->
         <div id="section-home" class="app-section" style="display:${activeSectionInfo.home};">
-            <div class="section-title">Şu Anda Okunanlar</div>
+            <div class="section-title">${t('current_reads_title', locale)}</div>
             <div class="current-reads-grid" style="margin-bottom: 3rem;">
                 ${currentReadsHtml}
             </div>
 
-            <div class="section-title">Yıllık Koleksiyon (${currentYear})</div>
+            <div class="section-title">${t('annual_collection_title', locale)} (${currentYear})</div>
             <div class="shelf-container">
                 ${shelfHtml}
             </div>
@@ -1055,15 +1068,15 @@ function serveApp(req, res, editBookId = null) {
             <div class="stats-bar">
                 <div class="stat-item">
                     <div class="stat-value">${totalBooks}</div>
-                    <div class="stat-label">Kitap</div>
+                    <div class="stat-label">${t('total_books', locale)}</div>
                 </div>
                 <div class="stat-item">
                     <div class="stat-value">${totalPages}</div>
-                    <div class="stat-label">Sayfa</div>
+                    <div class="stat-label">${t('total_pages', locale)}</div>
                 </div>
                 <div class="stat-item">
                     <div class="stat-value">${avgRating}</div>
-                    <div class="stat-label">Ort. Puan</div>
+                    <div class="stat-label">${t('avg_rating', locale)}</div>
                 </div>
             </div>
         </div>
@@ -1094,26 +1107,26 @@ function serveApp(req, res, editBookId = null) {
             <div class="filter-panel" style="margin-top:1rem;">
                 <form action="/books" method="GET" class="filter-form">
                     <!-- Search -->
-                    <input type="text" name="search" placeholder="Kitap ara..." class="filter-input" style="flex:1; min-width: 200px;" value="${req.query.search || ''}">
+                    <input type="text" name="search" placeholder="${t('search_placeholder', locale)}" class="filter-input" style="flex:1; min-width: 200px;" value="${req.query.search || ''}">
                     
                     <!-- Filters -->
                     <select name="author" class="filter-input" style="width:auto; cursor:pointer;">
-                        <option value="">Yazar (Tümü)</option>
+                        <option value="">${t('filter_author', locale)}</option>
                         ${data.allAuthors.map(a => `<option value="${a}" ${req.query.author === a ? 'selected' : ''}>${a}</option>`).join('')}
                     </select>
 
                      <select name="genre" class="filter-input" style="width:auto; cursor:pointer;">
-                        <option value="">Tür (Tümü)</option>
+                        <option value="">${t('filter_genre', locale)}</option>
                         ${data.allGenres.map(g => `<option value="${g}" ${req.query.genre === g ? 'selected' : ''}>${g}</option>`).join('')}
                     </select>
 
                      <select name="year" class="filter-input" style="width:auto; cursor:pointer;">
-                        <option value="">Yıl (Tümü)</option>
+                        <option value="">${t('filter_year', locale)}</option>
                         ${data.allYears.map(y => `<option value="${y}" ${req.query.year === y ? 'selected' : ''}>${y}</option>`).join('')}
                     </select>
 
-                    <button type="submit" class="btn-da">Filtrele</button>
-                    ${(req.query.search || req.query.author || req.query.genre || req.query.year) ? '<a href="/books?section=library" class="btn-da" style="text-decoration:none; border-color:var(--da-accent-red); color:var(--da-accent-red);">Temizle</a>' : ''}
+                    <button type="submit" class="btn-da">${t('filter_btn', locale)}</button>
+                    ${(req.query.search || req.query.author || req.query.genre || req.query.year) ? `<a href="/books?section=library" class="btn-da" style="text-decoration:none; border-color:var(--da-accent-red); color:var(--da-accent-red);">${t('clear_btn', locale)}</a>` : ''}
                 </form>
             </div>
             
@@ -1128,30 +1141,30 @@ function serveApp(req, res, editBookId = null) {
             
             <div style="display: flex; gap: 1rem; margin-bottom: 2rem; flex-wrap: wrap;">
                   <button class="btn-da btn-da-primary" onclick="window.location.href='/books?section=add'">
-                     Manuel Ekle
+                     ${t('manual_add_btn', locale)}
                   </button>
                   <button class="btn-da" onclick="document.getElementById('bookSearchModal').showModal()">
-                     🔍 İnternetten Ara & Ekle
+                     🔍 ${t('search_add_btn', locale)}
                   </button>
                   <button class="btn-da btn-auto-fetch" onclick="runAutoFetch()" style="border-color:var(--da-accent-green); color:var(--da-accent-green);">
-                     ⚡ Eksik Verileri Tamamla
+                     ⚡ ${t('auto_fetch_btn', locale)}
                   </button>
                   <span id="fetch-status-msg" style="align-self:center; font-size:0.9rem; color:var(--da-accent-orange);"></span>
             </div>
 
             <!-- Import CSV Section (Collapsed) -->
             <details style="margin-bottom:2rem; background:rgba(0,0,0,0.2); padding:1rem; border-radius:4px; border:1px solid var(--da-border);">
-                <summary style="cursor:pointer; font-weight:bold; color:var(--da-accent-orange);">📤 Toplu CSV Yükle / İçe Aktar</summary>
+                <summary style="cursor:pointer; font-weight:bold; color:var(--da-accent-orange);">📤 ${t('import_csv_summary', locale)}</summary>
                 <div style="margin-top:1rem;">
                      <p style="font-size:0.9rem; color:var(--da-text-muted); margin-bottom:1rem;">
-                        CSV dosyanız şu sütunları içerebilir: <code>Title, Author, My Rating, Date Read, Number of Pages, Exclusive Shelf, ISBN, Original Publication Year, Date Added</code>. <br>
-                        (Goodreads export formatı desteklenir)
+                        ${t('import_csv_desc', locale)} <br>
+                        (Goodreads export support)
                      </p>
                      <form action="/books/import-csv" method="POST" enctype="multipart/form-data" style="display:flex; gap:1rem; align-items:center;">
                         <div class="file-input-wrapper" style="flex:1; margin-bottom:0;">
                              <input type="file" name="csvFile" accept=".csv" required>
                         </div>
-                        <button type="submit" class="btn-da">Yükle</button>
+                        <button type="submit" class="btn-da">${t('upload_btn', locale)}</button>
                      </form>
                 </div>
             </details>
@@ -1162,70 +1175,70 @@ function serveApp(req, res, editBookId = null) {
                 <input type="hidden" name="id" value="${b.id || ''}">
                 <input type="hidden" id="hidden-imageUrl" name="imageUrl" value="${b.imageUrl || ''}">
                 
-                <label style="display:block; margin-bottom:0.5rem;">Kitap Adı *</label>
+                <label style="display:block; margin-bottom:0.5rem;">${t('book_title_label', locale)} *</label>
                 <input type="text" name="title" required class="filter-input" value="${b.title || ''}">
 
-                <label style="display:block; margin-bottom:0.5rem;">Yazar *</label>
+                <label style="display:block; margin-bottom:0.5rem;">${t('book_author_label', locale)} *</label>
                 <input type="text" name="author" required class="filter-input" value="${b.author || ''}">
 
                 <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
                     <div>
-                        <label style="display:block; margin-bottom:0.5rem;">Sayfa Sayısı</label>
+                        <label style="display:block; margin-bottom:0.5rem;">${t('book_page_count_label', locale)}</label>
                         <input type="number" name="pageCount" class="filter-input" value="${b.pageCount || ''}">
                     </div>
                      <div>
-                        <label style="display:block; margin-bottom:0.5rem;">ISBN</label>
+                        <label style="display:block; margin-bottom:0.5rem;">${t('book_isbn_label', locale)}</label>
                         <input type="text" name="isbn" class="filter-input" value="${b.isbn || ''}">
                     </div>
                 </div>
 
-                <label style="display:block; margin-bottom:0.5rem;">Kapak Görseli</label>
+                <label style="display:block; margin-bottom:0.5rem;">${t('book_cover_label', locale)}</label>
                 <!-- Helper text regarding image source -->
                 <div id="image-helper-text" style="font-size:0.8rem; color:var(--da-text-muted); margin-bottom:0.5rem;">
-                    ${b.imageUrl ? '<span style="color:var(--da-accent-green);">✓ Mevcut kapak URL ile tanımlı.</span> Değiştirmek için dosya yükleyin veya arama yapın.' : 'Dosya yükleyebilir veya "İnternetten Ara" ile otomatik seçebilirsiniz.'}
+                    ${b.imageUrl ? `<span style="color:var(--da-accent-green);">✓ ${t('cover_set', locale)}</span>` : t('cover_helper', locale)}
                 </div>
                 <div class="file-input-wrapper">
                     <input type="file" name="coverImage" accept="image/*">
                 </div>
 
-                <label style="display:block; margin-bottom:0.5rem;">Durum</label>
+                <label style="display:block; margin-bottom:0.5rem;">${t('book_status_label', locale)}</label>
                 <div class="switch-container" style="background:rgba(0,0,0,0.5);">
                     <label class="switch-option active">
                         <input type="radio" name="status" value="reading" ${(!b.status || b.status === 'reading') ? 'checked' : ''} onclick="toggleStatusFields()" style="display:none;">
-                        Okuyorum
+                        ${t('book_status_reading', locale)}
                     </label>
                     <label class="switch-option">
                         <input type="radio" name="status" value="read" ${b.status === 'read' ? 'checked' : ''} onclick="toggleStatusFields()" style="display:none;">
-                        Okudum
+                        ${t('book_status_read', locale)}
                     </label>
                     <label class="switch-option">
                         <input type="radio" name="status" value="dropped" ${b.status === 'dropped' ? 'checked' : ''} onclick="toggleStatusFields()" style="display:none;">
-                        Yarım
+                        ${t('book_status_dropped', locale)}
                     </label>
                 </div>
 
                 <!-- Conditional Fields -->
                 <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
                     <div>
-                        <label style="display:block; margin-bottom:0.5rem;">Başlama Tarihi</label>
+                        <label style="display:block; margin-bottom:0.5rem;">${t('book_start_date_label', locale)}</label>
                         <input type="date" name="startDate" class="filter-input" value="${b.startDate || new Date().toISOString().split('T')[0]}">
                     </div>
                     <div id="end-date-group" style="display:none;">
-                        <label style="display:block; margin-bottom:0.5rem;">Bitiş Tarihi</label>
+                        <label style="display:block; margin-bottom:0.5rem;">${t('book_end_date_label', locale)}</label>
                         <input type="date" name="endDate" class="filter-input" value="${b.endDate || ''}">
                     </div>
                 </div>
 
                 <div id="rating-group" style="display:none; margin-top:1rem;">
-                    <label style="display:block; margin-bottom:0.5rem;">Puanım (0-10)</label>
+                    <label style="display:block; margin-bottom:0.5rem;">${t('book_rating_label', locale)} (0-10)</label>
                     <input type="number" name="rating" step="0.1" min="0" max="10" class="filter-input" value="${b.rating || ''}">
                 </div>
 
-                <label style="display:block; margin-top:1rem; margin-bottom:0.5rem;">Türler (Yazıp Enter'a basın)</label>
+                <label style="display:block; margin-top:1rem; margin-bottom:0.5rem;">${t('book_genres_label', locale)} (${t('press_enter', locale)})</label>
                 
                 <div class="genre-input-container" onclick="document.getElementById('genre-input').focus()">
                     <div id="genre-tags" style="display:contents;"></div>
-                    <input type="text" id="genre-input" class="genre-type-input" placeholder="Tür ekle..." list="genre-list" autocomplete="off">
+                    <input type="text" id="genre-input" class="genre-type-input" placeholder="${t('add_genre_placeholder', locale)}..." list="genre-list" autocomplete="off">
                 </div>
                 <input type="hidden" name="genres" id="genres-hidden" value='${b.genres || "[]"}'>
 
@@ -1440,7 +1453,7 @@ function selectBook(book) {
     }
 }
          </script >
-    `, allBooks));
+    `, allBooks, locale));
 }
 
 // GET / - Main View

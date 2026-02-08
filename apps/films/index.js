@@ -5,6 +5,7 @@ const path = require('path');
 const multer = require('multer');
 const fs = require('fs');
 const https = require('https');
+const { t, getLocale } = require('../../utils/i18n');
 
 // TMDB Configuration
 const TMDB_API_KEY = '15d2ea6d0dc1d476efbca3eba2b9bbfb'; // Using a provided key for demo, normally this should be secret
@@ -64,35 +65,57 @@ const getWatcherStats = () => {
 };
 
 // Helper: Common Layout with Cinema Hall Theme
-const renderPage = (content, title = 'Film Veritabanı', req = null) => {
+const renderPage = (content, titleKey = 'title_showcase', req = null) => {
     const editMode = req && req.query.edit === 'true';
+    const locale = req ? getLocale(req) : 'tr';
+
     // Ensure we use the full path including mount point (/films)
     let currentPath = req ? (req.baseUrl + req.path) : '/films';
     if (currentPath.endsWith('/') && currentPath.length > 1) currentPath = currentPath.slice(0, -1);
 
-    // Construct toggle link preserving other query params
+    // Toggle URL Logic (Edit Mode)
     let toggleUrl = currentPath;
     if (req) {
         const query = { ...req.query };
         if (editMode) {
-            delete query.edit; // Turn off
+            delete query.edit;
         } else {
-            query.edit = 'true'; // Turn on
+            query.edit = 'true';
         }
-
         const queryString = new URLSearchParams(query).toString();
         toggleUrl = queryString ? `${currentPath}?${queryString}` : currentPath;
     }
 
+    // Language Switcher URLs
+    const getLangUrl = (lang) => {
+        if (!req) return '#';
+        const query = { ...req.query, lang };
+        // If switching lang, set cookie via client-side script or just rely on query param for now?
+        // Plan said: Query param sets cookie in middleware. I haven't added middleware yet.
+        // Let's add a script to set cookie on click to be safe, or just use query param which utility checks.
+        // The utility checks query param FIRST. So ?lang=en works immediately.
+        // But for persistence, we need to set cookie.
+        return `?${new URLSearchParams(query).toString()}`; // Simple link, let middleware handle cookie
+    };
+
     return `
 <!DOCTYPE html>
-<html lang="tr">
+<html lang="${locale}">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>${title}</title>
+    <title>${t(titleKey, locale)}</title>
     <link rel="stylesheet" href="/films.css">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600&family=Oswald:wght@400;500;700&display=swap" rel="stylesheet">
+    <script>
+        // Simple cookie setter for language persistence
+        function setLang(lang) {
+            document.cookie = "lang=" + lang + ";path=/;max-age=31536000";
+            const url = new URL(window.location);
+            url.searchParams.set('lang', lang);
+            window.location.href = url.toString();
+        }
+    </script>
 </head>
 <body class="film-theme">
     <div class="container">
@@ -100,42 +123,49 @@ const renderPage = (content, title = 'Film Veritabanı', req = null) => {
             <a href="/films" class="nav-brand">SİNEMA<span>SALONU</span></a>
             
             <nav class="glass-nav">
-                <a href="/films" class="nav-item ${currentPath === '/films' ? 'active' : ''}">VİTRİN</a>
-                <a href="/films/archive" class="nav-item ${currentPath === '/films/archive' ? 'active' : ''}">ARŞİV</a>
-                <a href="/films/watchlist" class="nav-item ${currentPath === '/films/watchlist' ? 'active' : ''}">İZLENECEKLER</a>
-                <a href="/films/stats" class="nav-item ${currentPath === '/films/stats' ? 'active' : ''}">İSTATİSTİK</a>
-                <a href="/films/hall-of-fame" class="nav-item ${currentPath === '/films/hall-of-fame' ? 'active' : ''}" style="color:#ffd700;">BAŞYAPITLAR</a>
-                <a href="/films/add" class="nav-item ${currentPath === '/films/add' ? 'active' : ''}">FİLM EKLE</a>
+                <a href="/films" class="nav-item ${currentPath === '/films' ? 'active' : ''}">${t('nav_showcase', locale)}</a>
+                <a href="/films/archive" class="nav-item ${currentPath === '/films/archive' ? 'active' : ''}">${t('nav_archive', locale)}</a>
+                <a href="/films/watchlist" class="nav-item ${currentPath === '/films/watchlist' ? 'active' : ''}">${t('nav_watchlist', locale)}</a>
+                <a href="/films/stats" class="nav-item ${currentPath === '/films/stats' ? 'active' : ''}">${t('nav_stats', locale)}</a>
+                <a href="/films/hall-of-fame" class="nav-item ${currentPath === '/films/hall-of-fame' ? 'active' : ''}" style="color:#ffd700;">${t('nav_hall_of_fame', locale)}</a>
+                <a href="/films/add" class="nav-item ${currentPath === '/films/add' ? 'active' : ''}">${t('nav_add', locale)}</a>
             </nav>
 
             <div class="header-controls">
-                <a href="${toggleUrl}" class="control-btn ${editMode ? 'active' : ''}" title="${editMode ? 'Düzenlemeyi Kapat' : 'Düzenleme Modu'}">
+                <div class="lang-switcher" style="margin-right:1rem; display:flex; gap:0.5rem;">
+                    <button onclick="setLang('tr')" style="background:none; border:none; color:${locale === 'tr' ? '#fff' : '#888'}; cursor:pointer; font-weight:bold;">TR</button>
+                    <span style="color:#444;">|</span>
+                    <button onclick="setLang('en')" style="background:none; border:none; color:${locale === 'en' ? '#fff' : '#888'}; cursor:pointer; font-weight:bold;">EN</button>
+                </div>
+                
+                <a href="${toggleUrl}" class="control-btn ${editMode ? 'active' : ''}" title="${editMode ? t('edit_off', locale) : t('edit_mode', locale)}">
                     ${editMode ? '🔒' : '✏️'}
                 </a>
-                <a href="/" class="control-btn exit-btn" title="Çıkış">⏏</a>
+                <a href="/" class="control-btn exit-btn" title="${t('exit', locale)}">⏏</a>
             </div>
         </header>
 
         <main class="content-wrapper">
             ${content}
         </main>
+
         
         <!-- MARK WATCHED MODAL -->
         <dialog id="markWatchedModal" style="background:var(--ch-bg-card); border:1px solid var(--ch-neon-cyan); color:#fff; padding:2rem; border-radius:8px; backdrop-filter:blur(10px);">
             <form id="markWatchedForm" method="POST" action="">
-                <h3 style="margin-top:0; font-family:var(--ch-font-display);">İZLEME DETAYLARI</h3>
-                <p style="color:#aaa; font-size:0.9rem;">Bu filmi ne zaman izlediniz?</p>
+                <h3 style="margin-top:0; font-family:var(--ch-font-display);">${t('watch_details', locale)}</h3>
+                <p style="color:#aaa; font-size:0.9rem;">${t('watch_date_q', locale)}</p>
                 <input type="date" name="watchDate" required style="background:rgba(0,0,0,0.3); border:1px solid #444; color:#fff; padding:0.5rem; width:100%; border-radius:4px; margin-bottom:1rem;">
                 
-                <p style="color:#aaa; font-size:0.9rem;">Puanınız (0-10):</p>
+                <p style="color:#aaa; font-size:0.9rem;">${t('score_q', locale)}</p>
                 <input type="number" name="rating" step="0.1" min="0" max="10" style="background:rgba(0,0,0,0.3); border:1px solid #444; color:#fff; padding:0.5rem; width:100%; border-radius:4px; margin-bottom:1rem;">
                 
-                <p style="color:#aaa; font-size:0.9rem;">Kişisel Notunuz:</p>
+                <p style="color:#aaa; font-size:0.9rem;">${t('notes', locale)}:</p>
                 <textarea name="userNotes" rows="3" style="background:rgba(0,0,0,0.3); border:1px solid #444; color:#fff; padding:0.5rem; width:100%; border-radius:4px; margin-bottom:1rem; font-family:inherit;"></textarea>
                 
                 <div style="display:flex; justify-content:flex-end; gap:1rem;">
-                    <button type="button" onclick="document.getElementById('markWatchedModal').close()" style="background:transparent; border:1px solid #555; color:#aaa; padding:0.5rem 1rem; cursor:pointer;">İPTAL</button>
-                    <button type="submit" style="background:var(--ch-neon-cyan); border:none; color:#000; padding:0.5rem 1rem; font-weight:bold; cursor:pointer;">KAYDET</button>
+                    <button type="button" onclick="document.getElementById('markWatchedModal').close()" style="background:transparent; border:1px solid #555; color:#aaa; padding:0.5rem 1rem; cursor:pointer;">${t('cancel', locale)}</button>
+                    <button type="submit" style="background:var(--ch-neon-cyan); border:none; color:#000; padding:0.5rem 1rem; font-weight:bold; cursor:pointer;">${t('save', locale)}</button>
                 </div>
             </form>
         </dialog>
@@ -236,11 +266,11 @@ const renderPage = (content, title = 'Film Veritabanı', req = null) => {
                         <div id="modalDescription" style="line-height:1.6; margin-bottom:2rem; font-size:1.05rem;"></div>
 
                         <div id="modalUserNotesContainer" style="display:none; background:rgba(255, 215, 0, 0.1); border-left:4px solid var(--ch-neon-gold); padding:1rem; margin-bottom:2rem; border-radius:4px;">
-                            <h4 style="margin:0 0 0.5rem 0; color:var(--ch-neon-gold); font-family:var(--ch-font-display);">NOTLARIM</h4>
+                            <h4 style="margin:0 0 0.5rem 0; color:var(--ch-neon-gold); font-family:var(--ch-font-display);">${t('notes', locale).toUpperCase()}</h4>
                             <div id="modalUserNotes" style="font-style:italic; color:#ddd;"></div>
                         </div>
 
-                        <h4 style="color:var(--ch-neon-cyan); margin-bottom:1rem; font-family:var(--ch-font-display);">OYUNCULAR</h4>
+                        <h4 style="color:var(--ch-neon-cyan); margin-bottom:1rem; font-family:var(--ch-font-display);">${t('cast', locale).toUpperCase()}</h4>
                         <div id="modalCast" style="display:flex; flex-wrap:wrap; gap:10px; margin-bottom:2rem;">
                             <!-- Cast tags -->
                         </div>
@@ -352,14 +382,14 @@ const renderPage = (content, title = 'Film Veritabanı', req = null) => {
 };
 
 // Helper: Render Film Grid
-const renderFilmGrid = (films, editMode = false, stats = {}) => {
+const renderFilmGrid = (films, editMode = false, stats = {}, locale = 'tr') => {
     return films.map(film => {
         const isCinema = film.isCinema === 1;
         // Watch Stats
         const filmStats = stats[film.title] || { count: 1, dates: [film.watchDate] };
         const isRewatched = filmStats.count > 1;
         const watchCountBadge = isRewatched ? `
-            <div title="Bu film toplam ${filmStats.count} kez izlendi" 
+            <div title="${t('watch_details', locale)}: ${filmStats.count}" 
                  style="position:absolute; top:10px; right:10px; background:rgba(0,0,0,0.8); color:var(--ch-neon-gold); 
                         border:1px solid var(--ch-neon-gold); padding:2px 8px; border-radius:12px; font-size:0.75rem; 
                         font-weight:bold; box-shadow:0 0 5px rgba(255,215,0,0.3); z-index:5; display:flex; align-items:center; gap:4px;">
@@ -368,30 +398,28 @@ const renderFilmGrid = (films, editMode = false, stats = {}) => {
 
         // Format dates for tooltip
         const dateListTooltip = isRewatched ?
-            filmStats.dates.map(d => new Date(d).toLocaleDateString('tr-TR', { year: 'numeric', month: 'short', day: 'numeric' })).join('\n')
+            filmStats.dates.map(d => new Date(d).toLocaleDateString(locale === 'tr' ? 'tr-TR' : 'en-US', { year: 'numeric', month: 'short', day: 'numeric' })).join('\n')
             : '';
 
-        // Parse genres safely
         // Parse genres safely
         let genreList = [];
         try {
             if (film.genres && film.genres.trim().startsWith('[')) {
                 genreList = JSON.parse(film.genres);
             } else if (film.genres) {
-                // Handle legacy format or single string
                 genreList = [film.genres];
             }
         } catch (e) { genreList = []; }
 
         const genreHtml = genreList.slice(0, 3).map(g => `<span class="mini-tag">${g}</span>`).join('');
 
-        const dateDisplay = film.watchDate ? new Date(film.watchDate).toLocaleDateString('tr-TR', { year: 'numeric', month: 'short', day: 'numeric' }) : '';
+        const dateDisplay = film.watchDate ? new Date(film.watchDate).toLocaleDateString(locale === 'tr' ? 'tr-TR' : 'en-US', { year: 'numeric', month: 'short', day: 'numeric' }) : '';
         const editActions = editMode ? `
             <div class="btn-actions">
-                <a href="/films/edit/${film.id}" style="color:var(--ch-neon-cyan); font-size:0.8rem; text-decoration:none;">Düzenle</a>
+                <a href="/films/edit/${film.id}" style="color:var(--ch-neon-cyan); font-size:0.8rem; text-decoration:none;">${t('edit', locale)}</a>
                 <div class="delete-wrapper" style="display:inline-block; position:relative;">
-                    <button type="button" onclick="toggleDelete(this, event)" style="background:none; border:none; color:#555; font-size:0.8rem; cursor:pointer; text-decoration:underline;">Sil</button>
-                    <button type="button" onclick="confirmDelete(this, ${film.id}, event)" class="delete-confirm" style="display:none; background:var(--ch-neon-red); color:#fff; border:none; padding:2px 8px; border-radius:4px; font-size:0.75rem; cursor:pointer; margin-left:5px;">Emin misin?</button>
+                    <button type="button" onclick="toggleDelete(this, event)" style="background:none; border:none; color:#555; font-size:0.8rem; cursor:pointer; text-decoration:underline;">${t('delete', locale)}</button>
+                    <button type="button" onclick="confirmDelete(this, ${film.id}, event)" class="delete-confirm" style="display:none; background:var(--ch-neon-red); color:#fff; border:none; padding:2px 8px; border-radius:4px; font-size:0.75rem; cursor:pointer; margin-left:5px;">Check?</button>
                 </div>
             </div>
         ` : '';
@@ -400,7 +428,7 @@ const renderFilmGrid = (films, editMode = false, stats = {}) => {
         const watchlistAction = film.status === 'watchlist' ? `
             <div class="btn-actions" style="justify-content:center; border-top-color:var(--ch-neon-cyan);">
                 <button type="button" onclick="markAsWatched(${film.id})" style="background:var(--ch-neon-cyan); color:#000; border:none; padding:0.5rem 1rem; border-radius:4px; font-weight:bold; cursor:pointer; width:100%;">
-                    ✅ İZLENDİ
+                    ✅ ${t('mark_watched', locale)}
                 </button>
             </div>
         ` : '';
@@ -408,14 +436,13 @@ const renderFilmGrid = (films, editMode = false, stats = {}) => {
         // Attach stats to film object for modal
         film.stats = filmStats;
 
-        // Escape for HTML attribute (encodeURIComponent does NOT escape single quotes, so we must do it manually)
         const filmData = encodeURIComponent(JSON.stringify(film)).replace(/'/g, '%27');
 
         return `
         <div class="film-card" onclick="openDetailModal('${filmData}')" style="cursor:pointer;">
             <div class="poster-frame">
-                ${film.imageUrl ? `<img src="${film.imageUrl}" alt="${film.title}" class="poster-img">` : '<div style="width:100%; height:100%; background:#222; display:flex; align-items:center; justify-content:center; color:#555;">AFİŞ YOK</div>'}
-                ${isCinema ? `<div class="cinema-badge">SİNEMA</div>` : ''}
+                ${film.imageUrl ? `<img src="${film.imageUrl}" alt="${film.title}" class="poster-img">` : '<div style="width:100%; height:100%; background:#222; display:flex; align-items:center; justify-content:center; color:#555;">NO POSTER</div>'}
+                ${isCinema ? `<div class="cinema-badge">${t('cinema_mode', locale)}</div>` : ''}
                 ${watchCountBadge}
             </div>
             <div class="film-info">
@@ -423,7 +450,7 @@ const renderFilmGrid = (films, editMode = false, stats = {}) => {
                     <div class="film-title-group">
                         <div class="film-title" title="${film.title}">${film.title}</div>
                         ${film.title_tr ? `<div class="film-title-tr" style="color:#777; font-size:0.85rem; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; margin-top:-2px;">${film.title_tr}</div>` : ''}
-                        <div class="film-director">${film.director || 'Yönetmen Yok'}</div>
+                        <div class="film-director">${film.director || t('director', locale) + '?'}</div>
                     </div>
                     <div class="film-rating-badge" style="
                         box-shadow: 0 0 ${film.rating ? Math.max(0, (film.rating - 4) * 3) : 0}px rgba(255, 215, 0, ${(film.rating ? (film.rating / 15) : 0)});
@@ -437,12 +464,12 @@ const renderFilmGrid = (films, editMode = false, stats = {}) => {
                     </div>
                 </div>
                 
-                ${film.userNotes ? `<div class="film-description" title="Okumak için tıklayın" onclick="event.stopPropagation(); this.classList.toggle('expanded')">${film.userNotes}</div>` : ''}
+                ${film.userNotes ? `<div class="film-description" title="${t('notes', locale)}" onclick="event.stopPropagation(); this.classList.toggle('expanded')">${film.userNotes}</div>` : ''}
                 
                 <div class="info-footer">
                         <div class="genre-list">${genreHtml}</div>
-                    <div class="watch-date" title="${isRewatched ? 'İzleme Geçmişi:\n' + dateListTooltip : ''}" style="${isRewatched ? 'border-bottom:1px dashed #666; cursor:help;' : ''}">
-                        ${dateDisplay} ${isRewatched ? '<span style="font-size:0.7em; color:var(--ch-neon-gold);">(+Geçmiş)</span>' : ''}
+                    <div class="watch-date" title="${isRewatched ? 'History:\n' + dateListTooltip : ''}" style="${isRewatched ? 'border-bottom:1px dashed #666; cursor:help;' : ''}">
+                        ${dateDisplay} ${isRewatched ? '<span style="font-size:0.7em; color:var(--ch-neon-gold);">(+Hits)</span>' : ''}
                     </div>
                 </div>
                 <!-- Stop Propagation for Actions -->
@@ -456,55 +483,58 @@ const renderFilmGrid = (films, editMode = false, stats = {}) => {
     }).join('');
 };
 
+
 // Helper: Render Form (Shared for Add & Edit)
-const renderForm = (film = null, returnUrl = '') => {
+const renderForm = (film = null, returnUrl = '', locale = 'tr') => {
     const isEdit = !!film;
     const action = isEdit ? `/films/edit/${film.id}` : '/films/add';
-    const title = isEdit ? 'BİLETİ DÜZENLE' : 'YENİ GİRİŞ';
-    const btnText = isEdit ? 'GÜNCELLE' : 'BİLETİ BAS';
+    const title = isEdit ? 'BİLETİ DÜZENLE' : t('title_add', locale); // Needs proper key for 'Edit Ticket'? 'title_add' is 'Add New Film'. 
+    // Let's use generic 'edit' key or similar? The dictionary has 'edit'. 'BİLETİ DÜZENLE' is stylized. 
+    // I'll stick to hardcoded stylized or add to dictionary. I added 'title_add'.
+    const formTitle = isEdit ? t('edit', locale).toUpperCase() : t('title_add', locale).toUpperCase();
+    const btnText = isEdit ? t('save', locale) : t('add_film_btn', locale);
 
     // Safety checks for values
     const val = (key) => film ? (film[key] || '') : '';
     const genres = film && film.genres ? JSON.parse(film.genres) : [];
-    const isSelected = (g) => genres.includes(g) ? 'selected' : '';
     const isCinemaChecked = film && film.isCinema ? 'checked' : '';
 
     return `
     <div class="form-container">
-            <h2 style="font-family:var(--ch-font-display); color:var(--ch-neon-red); margin-top:0;">${title}</h2>
+            <h2 style="font-family:var(--ch-font-display); color:var(--ch-neon-red); margin-top:0;">${formTitle}</h2>
             <form action="${action}" method="POST" enctype="multipart/form-data">
                 <input type="hidden" name="returnUrl" value="${returnUrl}">
                 <div class="form-group">
-                    <label class="cinema-label">FİLM ADI (ORİJİNAL)</label>
+                    <label class="cinema-label">TITLE (ORIGINAL)</label>
                     <div style="display:flex; gap:10px;">
                         <input type="text" id="titleInput" name="title" class="cinema-input" value="${val('title')}" required style="flex:1;">
                         <button type="button" onclick="openSearchModal()" class="btn-search">
-                            🔍 BUL
+                            🔍 TMDB
                         </button>
                     </div>
                 </div>
 
                 <div class="form-group">
-                    <label class="cinema-label">TÜRKÇE ADI</label>
+                    <label class="cinema-label">TITLE (LOCAL)</label>
                     <input type="text" name="title_tr" class="cinema-input" value="${val('title_tr')}" placeholder="Opsiyonel">
                 </div>
                 
                 <div class="form-group" style="display:grid; grid-template-columns: 1fr 1fr; gap:1rem;">
                     <div>
-                        <label class="cinema-label">YÖNETMEN</label>
+                        <label class="cinema-label">${t('director', locale).toUpperCase()}</label>
                         <input type="text" name="director" class="cinema-input" value="${val('director')}">
                     </div>
                     <div>
-                        <label class="cinema-label">YIL</label>
+                        <label class="cinema-label">${t('year', locale).toUpperCase()}</label>
                         <input type="number" name="year" class="cinema-input" value="${val('year')}">
                     </div>
                 </div>
 
                 <div class="form-group">
-                    <label class="cinema-label">OYUNCULAR (Virgülle ayırın veya seçin)</label>
+                    <label class="cinema-label">${t('cast', locale).toUpperCase()}</label>
                     <div class="genre-input-container" onclick="document.getElementById('actor-input').focus()">
                         <div id="actor-tags" style="display:contents;"></div>
-                        <input type="text" id="actor-input" class="genre-type-input" placeholder="Oyuncu ekle..." autocomplete="off">
+                        <input type="text" id="actor-input" class="genre-type-input" placeholder="${t('search_placeholder', locale)}" autocomplete="off">
                     </div>
                     <input type="hidden" name="actors" id="actors-hidden" value='${val('actors') || '[]'}'>
                     
@@ -559,20 +589,21 @@ const renderForm = (film = null, returnUrl = '') => {
                 </div>
 
                 <div class="form-group">
-                    <label class="cinema-label">TÜRLER (Yazıp Enter'a basın)</label>
+                    <label class="cinema-label">${t('genre', locale).toUpperCase()}</label>
                     
                     <div class="genre-input-container" onclick="document.getElementById('genre-input').focus()">
                         <div id="genre-tags" style="display:contents;">
                             <!-- Tags will be dynamically added here -->
                         </div>
-                        <input type="text" id="genre-input" class="genre-type-input" placeholder="Tür ekle..." list="genre-list" autocomplete="off">
+                        <input type="text" id="genre-input" class="genre-type-input" placeholder="..." list="genre-list" autocomplete="off">
                     </div>
 
                     <input type="hidden" name="genres" id="genres-hidden" value='${JSON.stringify(genres)}'>
                     
                     <datalist id="genre-list">
-                        ${['Bilim-Kurgu', 'Dram', 'Aksiyon', 'Gerilim', 'Korku', 'Komedi', 'Macera', 'Gizem', 'Romantik', 'Animasyon', 'Suç', 'Fantastik', 'Biyografi', 'Aile', 'Müzikal', 'Müzik'].map(g => `<option value="${g}">`).join('')}
+                        ${['Sci-Fi', 'Drama', 'Action', 'Thriller', 'Horror', 'Comedy', 'Adventure', 'Mystery', 'Romance', 'Animation', 'Crime', 'Fantasy', 'Biography', 'Family', 'Musical', 'Music'].map(g => `<option value="${g}">`).join('')}
                     </datalist>
+
 
                     <script>
                         (function() {
@@ -892,6 +923,7 @@ const renderForm = (film = null, returnUrl = '') => {
 // GET / - Homepage (Current Year Only)
 router.get('/', (req, res) => {
     const editMode = req.query.edit === 'true';
+    const locale = getLocale(req);
     const currentYear = new Date().getFullYear();
     const showAll = req.query.showEveryone === 'true'; // Hidden param to debug
 
@@ -906,23 +938,24 @@ router.get('/', (req, res) => {
 
     res.send(renderPage(`
         <div class="section-header">
-            <h2 class="page-title">VİTRİN ${currentYear}</h2>
+            <h2 class="page-title">${t('nav_showcase', locale)} ${currentYear}</h2>
             <div class="cinema-stats">
-                <div class="stat-item"><strong>${stats.total}</strong> FİLM</div>
-                <div class="stat-item"><strong>${stats.cinema}</strong> SİNEMA</div>
-                <div class="stat-item"><strong>${stats.avg}</strong> ORT.</div>
+                <div class="stat-item"><strong>${stats.total}</strong> ${t('film', locale)}</div>
+                <div class="stat-item"><strong>${stats.cinema}</strong> ${t('cinema', locale)}</div>
+                <div class="stat-item"><strong>${stats.avg}</strong> ${t('avg', locale)}</div>
             </div>
         </div>
         <div class="film-grid">
-            ${renderFilmGrid(films, editMode, getWatcherStats())}
+            ${renderFilmGrid(films, editMode, getWatcherStats(), locale)}
         </div>
-    `, 'Vizyon | Film Veritabanı', req));
+    `, 'title_showcase', req));
 });
 
 // GET /archive - All Films with Filters
 // GET /archive - All Films with Filters
 router.get('/archive', (req, res) => {
     const editMode = req.query.edit === 'true';
+    const locale = getLocale(req);
     const { director, genre, year, sort, q, isCinema } = req.query;
     const filters = getFilterData();
 
@@ -950,65 +983,66 @@ router.get('/archive', (req, res) => {
                 ${editMode ? '<input type="hidden" name="edit" value="true">' : ''}
                 
                 <div style="flex:1; min-width:200px; display:flex;">
-                     <input type="text" name="q" class="cinema-input-sm" value="${q || ''}" placeholder="Film, yönetmen veya oyuncu ara..." style="width:100%; border-right:none; border-top-right-radius:0; border-bottom-right-radius:0;">
-                     <button type="submit" class="btn-cinema-sm" style="border-top-left-radius:0; border-bottom-left-radius:0; background:var(--ch-neon-cyan); color:#000; border-color:var(--ch-neon-cyan);">ARA</button>
+                     <input type="text" name="q" class="cinema-input-sm" value="${q || ''}" placeholder="${t('search_placeholder', locale)}" style="width:100%; border-right:none; border-top-right-radius:0; border-bottom-right-radius:0;">
+                     <button type="submit" class="btn-cinema-sm" style="border-top-left-radius:0; border-bottom-left-radius:0; background:var(--ch-neon-cyan); color:#000; border-color:var(--ch-neon-cyan);">${t('search_btn', locale)}</button>
                 </div>
 
                 <label style="display:flex; align-items:center; color:#ccc; font-size:0.9rem; cursor:pointer; background:rgba(0,0,0,0.5); padding:0 10px; height:38px; border:1px solid #444; border-radius:4px;">
                     <input type="checkbox" name="isCinema" onchange="this.form.submit()" ${isCinema ? 'checked' : ''} style="margin-right:5px;">
-                    SİNEMA
+                    ${t('cinema', locale)}
                 </label>
 
                 <select name="director" class="cinema-input-sm" onchange="this.form.submit()">
-                    <option value="">Tüm Yönetmenler</option>
+                    <option value="">${t('filter_all', locale)} ${t('director', locale)}</option>
                     ${filters.directors.map(d => `<option value="${d}" ${director === d ? 'selected' : ''}>${d}</option>`).join('')}
                 </select>
                 <select name="year" class="cinema-input-sm" onchange="this.form.submit()">
-                    <option value="">Tüm Yıllar</option>
+                    <option value="">${t('filter_all', locale)} ${t('year', locale)}</option>
                     ${filters.years.map(y => `<option value="${y}" ${year === y ? 'selected' : ''}>${y}</option>`).join('')}
                 </select>
                 <select name="genre" class="cinema-input-sm" onchange="this.form.submit()">
-                    <option value="">Tüm Türler</option>
+                    <option value="">${t('filter_all', locale)} ${t('genre', locale)}</option>
                     ${filters.genres.map(g => `<option value="${g}" ${genre === g ? 'selected' : ''}>${g}</option>`).join('')}
                 </select>
                 <select name="sort" class="cinema-input-sm" onchange="this.form.submit()">
-                    <option value="date_desc" ${sort === 'date_desc' ? 'selected' : ''}>Tarih (Yeni > Eski)</option>
-                    <option value="rating_desc" ${sort === 'rating_desc' ? 'selected' : ''}>Puan (Yüksek > Düşük)</option>
-                    <option value="rating_asc" ${sort === 'rating_asc' ? 'selected' : ''}>Puan (Düşük > Yüksek)</option>
+                    <option value="date_desc" ${sort === 'date_desc' ? 'selected' : ''}>${t('sort_date_desc', locale)}</option>
+                    <option value="rating_desc" ${sort === 'rating_desc' ? 'selected' : ''}>${t('sort_rating_desc', locale)}</option>
+                    <option value="rating_asc" ${sort === 'rating_asc' ? 'selected' : ''}>${t('sort_rating_asc', locale)}</option>
                 </select>
-                <a href="/films/archive${editMode ? '?edit=true' : ''}" class="btn-cinema-sm" style="text-decoration:none; display:inline-block; text-align:center;">SIFIRLA</a>
+                <a href="/films/archive${editMode ? '?edit=true' : ''}" class="btn-cinema-sm" style="text-decoration:none; display:inline-block; text-align:center;">${t('reset', locale)}</a>
             </form>
         </div>
     `;
 
     res.send(renderPage(`
         <div class="section-header">
-            <h2 style="color:var(--ch-neon-gold);">FİLM ARŞİVİ (${films.length})</h2>
+            <h2 style="color:var(--ch-neon-gold);">${t('title_archive', locale).toUpperCase()} (${films.length})</h2>
         </div>
         ${filterHtml}
         <div class="film-grid">
-            ${renderFilmGrid(films, editMode, getWatcherStats())}
+            ${renderFilmGrid(films, editMode, getWatcherStats(), locale)}
         </div>
-    `, 'Arşiv | Film Veritabanı', req));
+    `, 'title_archive', req));
 });
 
 // GET /watchlist - Items to watch
 router.get('/watchlist', (req, res) => {
     const editMode = req.query.edit === 'true';
+    const locale = getLocale(req);
     const films = db.prepare("SELECT * FROM films WHERE status = 'watchlist' ORDER BY id DESC").all();
 
     res.send(renderPage(`
         <div class="section-header">
-            <h2 class="page-title" style="color:var(--ch-neon-cyan);">İZLENECEKLER LİSTESİ (${films.length})</h2>
+            <h2 class="page-title" style="color:var(--ch-neon-cyan);">${t('title_watchlist', locale).toUpperCase()} (${films.length})</h2>
         </div>
         
         ${films.length > 0 ? `
             <div class="film-grid">
-                ${renderFilmGrid(films, editMode)}
+                ${renderFilmGrid(films, editMode, {}, locale)}
             </div>
-        ` : '<div style="text-align:center; padding:4rem; color:#666; font-size:1.2rem;">Listeniz boş. Film eklerken "İzlenecekler" listesine ekleyebilirsiniz.</div>'}
+        ` : `<div style="text-align:center; padding:4rem; color:#666; font-size:1.2rem;">${t('empty_watchlist', locale)}</div>`}
 
-    `, 'İzlenecekler | Film Veritabanı', req));
+    `, 'title_watchlist', req));
 });
 
 // POST /mark-watched/:id
@@ -1025,6 +1059,7 @@ router.post('/mark-watched/:id', (req, res) => {
 // GET /hall-of-fame - High Rated Films
 router.get('/hall-of-fame', (req, res) => {
     const editMode = req.query.edit === 'true';
+    const locale = getLocale(req);
     // Fetch films with isHallOfFame = 1
     const films = db.prepare("SELECT * FROM films WHERE isHallOfFame = 1 ORDER BY rating DESC, watchDate DESC").all();
 
@@ -1032,15 +1067,15 @@ router.get('/hall-of-fame', (req, res) => {
         <div class="hall-of-fame-container" style="text-align:center; padding:2rem 0;">
             <div class="hof-header" style="margin-bottom:3rem;">
                 <div style="font-size:3rem; margin-bottom:0.5rem;">⚜️</div>
-                <h2 style="font-family:var(--ch-font-display); font-size:2.5rem; background: linear-gradient(to bottom, #ffd700, #b8860b); -webkit-background-clip: text; -webkit-text-fill-color: transparent; text-shadow: 0 0 30px rgba(255, 215, 0, 0.3); margin:0;">BAŞYAPITLAR</h2>
-                <p style="color:#888; letter-spacing:2px; font-size:0.9rem; margin-top:0.5rem;">SİNEMA TARİHİNİN EN İYİLERİ</p>
+                <h2 style="font-family:var(--ch-font-display); font-size:2.5rem; background: linear-gradient(to bottom, #ffd700, #b8860b); -webkit-background-clip: text; -webkit-text-fill-color: transparent; text-shadow: 0 0 30px rgba(255, 215, 0, 0.3); margin:0;">${t('hall_of_fame_title', locale)}</h2>
+                <p style="color:#888; letter-spacing:2px; font-size:0.9rem; margin-top:0.5rem;">${t('hall_of_fame_subtitle', locale)}</p>
             </div>
             
             ${films.length > 0 ? `
                 <div class="film-grid hof-grid">
-                    ${renderFilmGrid(films, editMode).replace(/class="film-card"/g, 'class="film-card hof-card"')}
+                    ${renderFilmGrid(films, editMode, {}, locale).replace(/class="film-card"/g, 'class="film-card hof-card"')}
                 </div>
-            ` : '<div style="color:#666; margin-top:2rem;">Henüz koleksiyona eklenmiş bir başyapıt yok.</div>'}
+            ` : `<div style="color:#666; margin-top:2rem;">${t('empty_hof', locale)}</div>`}
         </div>
         
         <style>
@@ -1072,7 +1107,7 @@ router.get('/hall-of-fame', (req, res) => {
                 text-shadow: 0 0 10px rgba(255, 215, 0, 0.5);
             }
         </style>
-    `, 'Başyapıtlar | Film Veritabanı', req));
+    `, 'hall_of_fame_title', req));
 });
 
 
@@ -1270,6 +1305,8 @@ router.post('/api/tools/fetch-missing', async (req, res) => {
 // GET /stats - Statistics Dashboard
 router.get('/stats', (req, res) => {
     // 1. Determine Years for Filter
+    const editMode = req.query.edit === 'true'; // Wait, stats doesn't use editMode but renderPage might need the param to keep it? Using req
+    const locale = getLocale(req);
     const allFilms = db.prepare('SELECT * FROM films').all();
     const availableYears = [...new Set(allFilms.map(f => f.watchDate ? f.watchDate.substring(0, 4) : null).filter(y => y))].sort().reverse();
 
@@ -1282,15 +1319,20 @@ router.get('/stats', (req, res) => {
     // FILTER DATASET BY YEAR (Global Filter)
     // Only count watched films
     let statsFilms = allFilms.filter(f => f.status === 'watched');
-    let periodTitle = "TÜM ZAMANLAR";
+    let periodTitle = t('stats_all_time', locale);
 
     if (selectedYear !== 'all') {
         statsFilms = allFilms.filter(f => f.watchDate && f.watchDate.startsWith(selectedYear));
-        periodTitle = `${selectedYear} YILI`; // "TEST" is added below in the HTML title as requested
+        periodTitle = `${selectedYear}`; // Just year
     }
 
     // 2. Monthly Activity
     const months = ['Ocak', 'Şubat', 'Mart', 'Nisan', 'Mayıs', 'Haziran', 'Temmuz', 'Ağustos', 'Eylül', 'Ekim', 'Kasım', 'Aralık'];
+    // TODO: Translate months? 'months' array is used for display. I should use locale specific months.
+    // I can generate them using Date.
+    const getMonthName = (index) => new Date(2000, index, 1).toLocaleDateString(locale === 'tr' ? 'tr-TR' : 'en-US', { month: 'short' });
+
+    // ... logic ...
     const monthlyCounts = new Array(12).fill(0);
 
     statsFilms.forEach(f => {
@@ -1322,11 +1364,11 @@ router.get('/stats', (req, res) => {
     const content = `
     < div class="stats-container" >
             <div class="stats-header" style="display:flex; justify-content:space-between; align-items:center; margin-bottom:2rem;">
-                <h2 class="page-title" style="margin:0; color:var(--ch-neon-gold);">SİNEMA ANALİZİ <span style="font-size:0.6em; color:#666;">// ${periodTitle}</span></h2>
+                <h2 class="page-title" style="margin:0; color:var(--ch-neon-gold);">${t('stats_title', locale)} <span style="font-size:0.6em; color:#666;">// ${periodTitle}</span></h2>
                 
                 <form action="/films/stats" method="GET" style="margin:0;">
                     <select name="year" class="cinema-input-sm" onchange="this.form.submit()" style="background:rgba(20,20,20,0.8); border:1px solid var(--ch-neon-gold); color:var(--ch-neon-gold); font-weight:bold; padding: 0.5rem 1rem; border-radius:4px; cursor:pointer;">
-                        <option value="all" ${selectedYear === 'all' ? 'selected' : ''}>TÜM ZAMANLAR</option>
+                        <option value="all" ${selectedYear === 'all' ? 'selected' : ''}>${t('stats_all_time', locale)}</option>
                         ${availableYears.map(y => `<option value="${y}" ${selectedYear == y ? 'selected' : ''}>${y}</option>`).join('')}
                     </select>
                 </form>
@@ -1335,16 +1377,15 @@ router.get('/stats', (req, res) => {
             <div class="stats-grid">
                 <!-- Monthly Activity Chart -->
                 <div class="stat-card full-width">
-                    <h3>AYLIK İZLEME GRAFİĞİ</h3>
+                    <h3>${t('stats_monthly', locale)}</h3>
                     <div class="chart-bar-container">
-                        ${months.map((m, i) => {
-        const count = monthlyCounts[i];
+                        ${monthlyCounts.map((count, i) => {
         const height = maxMonthly > 0 ? (count / maxMonthly) * 100 : 0;
         return `
                                 <div class="bar-group">
                                     <div class="bar-value">${count > 0 ? count : ''}</div>
                                     <div class="bar" style="height: ${height}%; box-shadow: 0 0 ${count > 0 ? '10px' : '0'} var(--ch-neon-cyan);"></div>
-                                    <div class="bar-label">${m.substring(0, 3)}</div>
+                                    <div class="bar-label">${getMonthName(i)}</div>
                                 </div>
                             `;
     }).join('')}
@@ -1353,7 +1394,7 @@ router.get('/stats', (req, res) => {
 
                 <!-- Genre Distribution -->
                 <div class="stat-card" style="max-height: 500px; overflow-y: auto;">
-                    <h3>TÜR DAĞILIMI</h3>
+                    <h3>${t('stats_genre', locale)}</h3>
                     <div class="chart-list">
                         ${topGenres.length > 0 ? topGenres.map(([genre, count]) => {
         const max = topGenres[0][1];
@@ -1373,17 +1414,17 @@ router.get('/stats', (req, res) => {
 
                 <!-- Cinema vs Home -->
                 <div class="stat-card">
-                    <h3>SİNEMA vs EV</h3>
+                    <h3>${t('stats_cinema_vs_home', locale)}</h3>
                     ${statsFilms.length > 0 ? `
                         <div class="donut-chart-container">
                             <div class="donut-stat">
                                 <span style="color:var(--ch-neon-red); font-size:2rem; font-weight:bold;">${cinemaCount}</span>
-                                <small>SİNEMA</small>
+                                <small>${t('cinema', locale)}</small>
                             </div>
                             <div class="donut-divider"></div>
                             <div class="donut-stat">
                                 <span style="color:var(--ch-neon-cyan); font-size:2rem; font-weight:bold;">${homeCount}</span>
-                                <small>EV</small>
+                                <small>${t('home', locale)}</small>
                             </div>
                         </div>
                         <div class="progress-bar-stacked">
@@ -1396,43 +1437,45 @@ router.get('/stats', (req, res) => {
         </div >
     `;
 
-    res.send(renderPage(content, 'İstatistikler', req));
+    res.send(renderPage(content, 'title_stats', req));
 });
 
 // GET /add - New Ticket Form
 router.get('/add', (req, res) => {
+    const locale = getLocale(req);
     const importForm = `
     <!-- CSV Import Section -->
         <div class="form-container" style="margin-top: 2rem; border-top-color: #ffd700;">
-            <h2 style="font-family:var(--ch-font-display); color:#ffd700; margin-top:0;">ARŞİV YÜKLE (CSV)</h2>
+            <h2 style="font-family:var(--ch-font-display); color:#ffd700; margin-top:0;">${t('import_archive', locale)}</h2>
             <form action="/films/import" method="POST" enctype="multipart/form-data">
                 <div class="form-group">
-                    <label class="cinema-label">CSV DOSYASI YÜKLE</label>
+                    <label class="cinema-label">${t('upload_csv', locale)}</label>
                     <input type="file" name="csvFile" class="cinema-input" accept=".csv" required>
-                        <small style="color:#666; display:block; margin-top:0.5rem;">Beklenen format: Film Adı, Sinemada İzlendi (Yes/No), Yönetmen, Tür, İzlenme Tarihi, Puan</small>
+                        <small style="color:#666; display:block; margin-top:0.5rem;">${t('common_mapping_instr', locale)}</small>
                 </div>
-                <button type="submit" class="btn-cinema" style="width:100%; border-color:#ffd700; color:#ffd700;">VERİLERİ İÇERİ AKTAR</button>
+                <button type="submit" class="btn-cinema" style="width:100%; border-color:#ffd700; color:#ffd700;">${t('confirm_upload', locale)}</button>
             </form>
         </div>
 
         <div class="form-container" style="margin-top: 2rem; border-top-color: var(--ch-neon-cyan);">
-            <h2 style="font-family:var(--ch-font-display); color:var(--ch-neon-cyan); margin-top:0;">OTOMATİK VERİ TAMAMLAMA</h2>
+            <h2 style="font-family:var(--ch-font-display); color:var(--ch-neon-cyan); margin-top:0;">${t('auto_fetch', locale)}</h2>
             <p style="color:#aaa; font-size:0.9rem; margin-bottom:1rem;">Görseli veya detayı eksik olan filmleri TMDB üzerinden tarar ve otomatik tamamlar.</p>
             
-            <button type="button" onclick="startAutoFetch()" id="btnAutoFetch" class="btn-cinema" style="width:100%; border-color:var(--ch-neon-cyan); color:var(--ch-neon-cyan);">EKSİKLERİ TAMAMLA (SCAN)</button>
+            <button type="button" onclick="startAutoFetch()" id="btnAutoFetch" class="btn-cinema" style="width:100%; border-color:var(--ch-neon-cyan); color:var(--ch-neon-cyan);">${t('start_scan', locale)}</button>
             
              <div id="fetchLog" style="margin-top:1rem; max-height:200px; overflow-y:auto; font-size:0.8rem; color:#888; display:none; background:#111; padding:0.5rem; border-radius:4px;"></div>
         </div>
 
         <div class="form-container" style="margin-top: 2rem; border-top-color: var(--ch-neon-gold);">
-            <h2 style="font-family:var(--ch-font-display); color:var(--ch-neon-gold); margin-top:0;">OYUNCU SENKRONİZASYONU</h2>
+            <h2 style="font-family:var(--ch-font-display); color:var(--ch-neon-gold); margin-top:0;">${t('actor_sync', locale)}</h2>
             <p style="color:#aaa; font-size:0.9rem; margin-bottom:1rem;">Arşivdeki oyuncuların bilgilerini (Biyografi, Fotoğraf, Yaş) TMDB'den otomatik çeker.</p>
             
-            <button type="button" onclick="startActorSync()" id="btnActorSync" class="btn-cinema" style="width:100%; border-color:var(--ch-neon-gold); color:var(--ch-neon-gold);">OYUNCULARI GÜNCELLE (SYNC)</button>
+            <button type="button" onclick="startActorSync()" id="btnActorSync" class="btn-cinema" style="width:100%; border-color:var(--ch-neon-gold); color:var(--ch-neon-gold);">${t('start_sync', locale)}</button>
             <div id="actorSyncLog" style="margin-top:1rem; max-height:200px; overflow-y:auto; font-size:0.8rem; color:#888; display:none; background:#111; padding:0.5rem; border-radius:4px;"></div>
         </div>
 
         <script>
+            // ... (keep existing scripts) ...
             async function startAutoFetch() {
                 const btn = document.getElementById('btnAutoFetch');
                 const log = document.getElementById('fetchLog');
@@ -1502,15 +1545,16 @@ router.get('/add', (req, res) => {
             }
     </script>
 `;
-    res.send(renderPage(renderForm() + importForm, 'Film Ekle', req));
+    res.send(renderPage(renderForm(null, '', locale) + importForm, 'title_add', req));
 });
 
 // GET /edit/:id
 router.get('/edit/:id', (req, res) => {
+    const locale = getLocale(req);
     const film = db.prepare('SELECT * FROM films WHERE id = ?').get(req.params.id);
     if (!film) return res.redirect('/films');
     const returnUrl = req.get('Referer') || '/films';
-    res.send(renderPage(renderForm(film, returnUrl), 'Film Düzenle', req));
+    res.send(renderPage(renderForm(film, returnUrl, locale), 'edit', req));
 });
 
 // POST /add
@@ -1626,6 +1670,7 @@ router.post('/edit/:id', upload.single('image'), (req, res) => {
 
 // POST /import - Step 1: Upload & Map Columns
 router.post('/import', upload.single('csvFile'), (req, res) => {
+    const locale = getLocale(req);
     if (!req.file) return res.redirect('/films/add');
 
     const csv = require('csv-parser');
@@ -1697,8 +1742,8 @@ router.post('/import', upload.single('csvFile'), (req, res) => {
 
             const mappingForm = `
                 <div class="form-container" style="max-width:800px; margin:2rem auto;">
-                    <h2 style="font-family:var(--ch-font-display); color:var(--ch-neon-gold);">SÜTUN EŞLEŞTİRME</h2>
-                    <p style="color:#aaa; margin-bottom:2rem;">CSV dosyanızdaki sütunları veritabanı alanlarıyla eşleştirin.</p>
+                    <h2 style="font-family:var(--ch-font-display); color:var(--ch-neon-gold);">${t('column_mapping', locale)}</h2>
+                    <p style="color:#aaa; margin-bottom:2rem;">${t('common_mapping_instr', locale)}</p>
                     
                     <form action="/films/import/process" method="POST">
                         <input type="hidden" name="filename" value="${filename}">
@@ -1713,7 +1758,7 @@ router.post('/import', upload.single('csvFile'), (req, res) => {
                                             ${f.required ? '<span style="color:#666; font-size:0.8rem;"> * Zorunlu</span>' : ''}
                                         </div>
                                         <select name="map_${f.key}" style="background:#111; border:1px solid #444; color:#fff; padding:0.5rem; border-radius:4px;">
-                                            <option value="">-- Seçiniz --</option>
+                                            <option value="">-- ${locale === 'tr' ? 'Seçiniz' : 'Select'} --</option>
                                             ${headers.map(h => `<option value="${h}" ${h === guessed ? 'selected' : ''}>${h}</option>`).join('')}
                                         </select>
                                     </div>
@@ -1722,14 +1767,14 @@ router.post('/import', upload.single('csvFile'), (req, res) => {
                         </div>
 
                         <div style="margin-top:2rem; display:flex; gap:1rem;">
-                            <a href="/films/add" class="btn-cinema" style="text-align:center; background:#333; color:#fff; border-color:#555; text-decoration:none;">İPTAL</a>
-                            <button type="submit" class="btn-cinema" style="flex:1; background:var(--ch-neon-green); color:#000; border-color:var(--ch-neon-green);">ONAYLA VE YÜKLE</button>
+                            <a href="/films/add" class="btn-cinema" style="text-align:center; background:#333; color:#fff; border-color:#555; text-decoration:none;">${t('cancel', locale)}</a>
+                            <button type="submit" class="btn-cinema" style="flex:1; background:var(--ch-neon-green); color:#000; border-color:var(--ch-neon-green);">${t('confirm_upload', locale)}</button>
                         </div>
                     </form>
                 </div>
             `;
 
-            res.send(renderPage(mappingForm, 'Sütun Eşleştirme', req));
+            res.send(renderPage(mappingForm, 'column_mapping', req));
         });
 });
 

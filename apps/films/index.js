@@ -1852,8 +1852,18 @@ router.get('/add', (req, res) => {
             }
 
             async function resolveItem(index, tmdbId) {
+                console.log('=== FRONTEND DEBUG ===');
+                console.log('Index:', index);
+                console.log('TMDB ID:', tmdbId);
+                console.log('ambiguousFilms length:', ambiguousFilms.length);
+                console.log('ambiguousFilms[index]:', ambiguousFilms[index]);
+                
                 const item = ambiguousFilms[index];
+                console.log('item:', item);
+                console.log('item.film:', item ? item.film : 'ITEM IS NULL');
+                
                 const filmId = item.film.id;
+                console.log('filmId extracted:', filmId);
                 
                 try {
                      const res = await fetch('/films/api/tools/apply-match', { 

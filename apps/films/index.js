@@ -138,9 +138,9 @@ const renderPage = (content, titleKey = 'title_showcase', req = null) => {
                     <button onclick="setLang('en')" style="background:none; border:none; color:${locale === 'en' ? '#fff' : '#888'}; cursor:pointer; font-weight:bold;">EN</button>
                 </div>
                 
-                <a href="${toggleUrl}" class="control-btn ${editMode ? 'active' : ''}" title="${editMode ? t('edit_off', locale) : t('edit_mode', locale)}">
+                <button onclick="toggleEditMode()" class="control-btn ${editMode ? 'active' : ''}" title="${editMode ? t('edit_off', locale) : t('edit_mode', locale)}" style="background:none; border:none; color:inherit; cursor:pointer; font-size:inherit;">
                     ${editMode ? '🔒' : '✏️'}
-                </a>
+                </button>
                 <a href="/" class="control-btn exit-btn" title="${t('exit', locale)}">⏏</a>
             </div>
         </header>
@@ -178,6 +178,33 @@ const renderPage = (content, titleKey = 'title_showcase', req = null) => {
                 
                 // Set default date to today
                 dateInput.valueAsDate = new Date();
+                
+                // Edit Mode Toggle (without page reload)
+                function toggleEditMode() {
+                    const currentUrl = new URL(window.location);
+                    const isEditMode = currentUrl.searchParams.get('edit') === 'true';
+                    
+                    // Save scroll position
+                    sessionStorage.setItem('scrollPos', window.scrollY);
+                    
+                    if (isEditMode) {
+                        currentUrl.searchParams.delete('edit');
+                    } else {
+                        currentUrl.searchParams.set('edit', 'true');
+                    }
+                    
+                    // Navigate to new URL (will reload page)
+                    window.location.href = currentUrl.toString();
+                }
+                
+                // Restore scroll position on page load
+                window.addEventListener('DOMContentLoaded', () => {
+                    const savedScroll = sessionStorage.getItem('scrollPos');
+                    if (savedScroll !== null) {
+                        window.scrollTo(0, parseInt(savedScroll));
+                        sessionStorage.removeItem('scrollPos');
+                    }
+                });
 
             function toggleDelete(btn, e) {
                 e.stopPropagation();

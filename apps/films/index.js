@@ -138,9 +138,9 @@ const renderPage = (content, titleKey = 'title_showcase', req = null) => {
                     <button onclick="setLang('en')" style="background:none; border:none; color:${locale === 'en' ? '#fff' : '#888'}; cursor:pointer; font-weight:bold;">EN</button>
                 </div>
                 
-                <a href="${toggleUrl}" class="control-btn ${editMode ? 'active' : ''}" title="${editMode ? t('edit_off', locale) : t('edit_mode', locale)}">
+                <button onclick="toggleEditMode()" class="control-btn ${editMode ? 'active' : ''}" title="${editMode ? t('edit_off', locale) : t('edit_mode', locale)}" style="background:none; border:none; color:inherit; cursor:pointer; font-size:inherit; padding:0;">
                     ${editMode ? '🔒' : '✏️'}
-                </a>
+                </button>
                 <a href="/" class="control-btn exit-btn" title="${t('exit', locale)}">⏏</a>
             </div>
         </header>
@@ -287,6 +287,38 @@ const renderPage = (content, titleKey = 'title_showcase', req = null) => {
                     alert('Hata: ' + err.message);
                 }
             }
+
+            // Edit Mode Toggle (no page reload, uses virtual state)
+            function toggleEditMode() {
+                const isEditMode = sessionStorage.getItem('editMode') === 'true';
+                
+                if (isEditMode) {
+                    sessionStorage.removeItem('editMode');
+                } else {
+                    sessionStorage.setItem('editMode', 'true');
+                }
+                
+                // Reload to apply edit mode
+                window.location.reload();
+            }
+
+            // Apply edit mode from sessionStorage on load
+            window.addEventListener('DOMContentLoaded', () => {
+                const isEditMode = sessionStorage.getItem('editMode') === 'true';
+                const currentUrl = new URL(window.location);
+                const urlEditMode = currentUrl.searchParams.get('edit') === 'true';
+                
+                // Sync URL with sessionStorage
+                if (isEditMode && !urlEditMode) {
+                    currentUrl.searchParams.set('edit', 'true');
+                    window.history.replaceState({}, '', currentUrl);
+                    window.location.reload();
+                } else if (!isEditMode && urlEditMode) {
+                    currentUrl.searchParams.delete('edit');
+                    window.history.replaceState({}, '', currentUrl);
+                    window.location.reload();
+                }
+            });
         </script>
 
         <!-- FILM DETAIL MODAL -->

@@ -36,6 +36,7 @@ try {
     if (!columnNames.includes('isHallOfFame')) filmsDb.exec('ALTER TABLE films ADD COLUMN isHallOfFame INTEGER DEFAULT 0');
     if (!columnNames.includes('status')) filmsDb.exec("ALTER TABLE films ADD COLUMN status TEXT DEFAULT 'watched'");
     if (!columnNames.includes('title_tr')) filmsDb.exec("ALTER TABLE films ADD COLUMN title_tr TEXT");
+    if (!columnNames.includes('userNotes')) filmsDb.exec("ALTER TABLE films ADD COLUMN userNotes TEXT");
 } catch (e) {
     console.error('Film migration error:', e);
 }

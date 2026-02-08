@@ -235,10 +235,6 @@ const renderPage = (content, titleKey = 'title_showcase', req = null) => {
                      alert('Hata: ' + err.message);
                 }
             }
-                
-                form.action = '/films/mark-watched/' + id;
-                modal.showModal();
-            }
         </script>
 
         <!-- FILM DETAIL MODAL -->

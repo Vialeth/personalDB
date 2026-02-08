@@ -1414,9 +1414,13 @@ router.post('/api/tools/apply-match', async (req, res) => {
                 try {
                     const movie = JSON.parse(data);
 
+                    if (!movie || !movie.id) {
+                        return res.status(500).json({ success: false, error: 'Invalid TMDB response' });
+                    }
+
                     // Update Logic (Force Update)
-                    const newTitle = movie.original_title;
-                    const newTitleTr = movie.title;
+                    const newTitle = movie.original_title || film.title;
+                    const newTitleTr = movie.title || film.title_tr;
                     const newYear = movie.release_date ? movie.release_date.split('-')[0] : film.year;
                     const newImage = movie.poster_path ? `${TMDB_IMAGE_BASE}${movie.poster_path}` : film.imageUrl;
                     const newDesc = movie.overview || film.description;
@@ -1433,11 +1437,19 @@ router.post('/api/tools/apply-match', async (req, res) => {
                         title = ?, title_tr = ?, imageUrl = ?, year = ?, description = ?, actors = ?, director = ?
                         WHERE id = ?
                     `);
-                    update.run(newTitle, newTitleTr, newImage, newYear, newDesc, newActors, director, filmId);
+                    const result = update.run(newTitle, newTitleTr, newImage, newYear, newDesc, newActors, director, filmId);
 
-                    res.json({ success: true });
+                    if (result.changes > 0) {
+                        console.log(`Updated film ${filmId} with TMDB ${tmdbId}`);
+                        res.json({ success: true });
+                    } else {
+                        res.status(500).json({ success: false, error: 'DB Update failed' });
+                    }
 
-                } catch (e) { res.status(500).json({ success: false, error: e.message }); }
+                } catch (e) {
+                    console.error('Apply Match Error:', e);
+                    res.status(500).json({ success: false, error: e.message });
+                }
             });
         }).on('error', (e) => res.status(500).json({ success: false, error: e.message }));
 
@@ -1723,14 +1735,21 @@ router.get('/add', (req, res) => {
                 const filmId = item.film.id;
                 
                 try {
-                     await fetch('/films/api/tools/apply-match', { 
+                     const res = await fetch('/films/api/tools/apply-match', { 
                         method: 'POST',
                         headers: {'Content-Type': 'application/json'},
                         body: JSON.stringify({ filmId, tmdbId })
                     });
                     
-                    ambiguousFilms.splice(index, 1);
-                    renderAmbiguityList();
+                    const data = await res.json();
+                    
+                    if (data.success) {
+                        ambiguousFilms.splice(index, 1);
+                        renderAmbiguityList();
+                    } else {
+                        alert('Güncelleme başarısız: ' + (data.error || 'Bilinmeyen Hata'));
+                    }
+
                 } catch(e) {
                     alert('Hata oluştu: ' + e.message);
                 }

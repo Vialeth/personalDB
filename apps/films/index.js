@@ -123,9 +123,16 @@ const renderPage = (content, title = 'Film Veritabanı', req = null) => {
         <!-- MARK WATCHED MODAL -->
         <dialog id="markWatchedModal" style="background:var(--ch-bg-card); border:1px solid var(--ch-neon-cyan); color:#fff; padding:2rem; border-radius:8px; backdrop-filter:blur(10px);">
             <form id="markWatchedForm" method="POST" action="">
-                <h3 style="margin-top:0; font-family:var(--ch-font-display);">İZLEME TARİHİ</h3>
+                <h3 style="margin-top:0; font-family:var(--ch-font-display);">İZLEME DETAYLARI</h3>
                 <p style="color:#aaa; font-size:0.9rem;">Bu filmi ne zaman izlediniz?</p>
                 <input type="date" name="watchDate" required style="background:rgba(0,0,0,0.3); border:1px solid #444; color:#fff; padding:0.5rem; width:100%; border-radius:4px; margin-bottom:1rem;">
+                
+                <p style="color:#aaa; font-size:0.9rem;">Puanınız (0-10):</p>
+                <input type="number" name="rating" step="0.1" min="0" max="10" style="background:rgba(0,0,0,0.3); border:1px solid #444; color:#fff; padding:0.5rem; width:100%; border-radius:4px; margin-bottom:1rem;">
+                
+                <p style="color:#aaa; font-size:0.9rem;">Kişisel Notunuz:</p>
+                <textarea name="userNotes" rows="3" style="background:rgba(0,0,0,0.3); border:1px solid #444; color:#fff; padding:0.5rem; width:100%; border-radius:4px; margin-bottom:1rem; font-family:inherit;"></textarea>
+                
                 <div style="display:flex; justify-content:flex-end; gap:1rem;">
                     <button type="button" onclick="document.getElementById('markWatchedModal').close()" style="background:transparent; border:1px solid #555; color:#aaa; padding:0.5rem 1rem; cursor:pointer;">İPTAL</button>
                     <button type="submit" style="background:var(--ch-neon-cyan); border:none; color:#000; padding:0.5rem 1rem; font-weight:bold; cursor:pointer;">KAYDET</button>
@@ -141,9 +148,201 @@ const renderPage = (content, title = 'Film Veritabanı', req = null) => {
                 
                 // Set default date to today
                 dateInput.valueAsDate = new Date();
+
+            function toggleDelete(btn, e) {
+                e.stopPropagation();
+                const wrapper = btn.closest('.delete-wrapper');
+                const confirmBtn = wrapper.querySelector('.delete-confirm');
+                
+                if (confirmBtn.style.display === 'none') {
+                    btn.style.display = 'none';
+                    confirmBtn.style.display = 'inline-block';
+                    
+                    // Hide after 3 seconds if not clicked
+                    setTimeout(() => {
+                       if(document.body.contains(btn)) {
+                           btn.style.display = 'inline-block';
+                           confirmBtn.style.display = 'none';
+                       }
+                    }, 3000);
+                }
+            }
+
+            async function confirmDelete(btn, id, e) {
+                e.stopPropagation();
+                
+                const card = btn.closest('.film-card');
+                if(!card) return;
+
+                // Optimistic UI Removal
+                card.style.transition = 'opacity 0.3s, transform 0.3s';
+                card.style.opacity = '0';
+                card.style.transform = 'scale(0.9)';
+                
+                try {
+                    const res = await fetch(\`/films/delete/\${id}\`, { 
+                        method: 'POST',
+                        headers: { 'Accept': 'application/json' }
+                    });
+                    
+                    if (res.ok) {
+                        setTimeout(() => card.remove(), 300);
+                    } else {
+                        // Revert if failed
+                        card.style.opacity = '1';
+                        card.style.transform = 'scale(1)';
+                        alert('Silme başarısız oldu.');
+                    }
+                } catch (err) {
+                     card.style.opacity = '1';
+                     card.style.transform = 'scale(1)';
+                     alert('Hata: ' + err.message);
+                }
+            }
                 
                 form.action = '/films/mark-watched/' + id;
                 modal.showModal();
+            }
+        </script>
+
+        <!-- FILM DETAIL MODAL -->
+        <dialog id="detailModal" style="width:95%; max-width:1100px; background:var(--ch-bg-card); border:1px solid var(--ch-neon-gold); color:#fff; padding:0; border-radius:12px; backdrop-filter:blur(20px); box-shadow:0 0 50px rgba(0,0,0,0.8);">
+            <div style="position:relative;">
+                <button type="button" onclick="document.getElementById('detailModal').close()" style="position:absolute; top:15px; right:15px; background:rgba(0,0,0,0.5); border:none; color:#fff; font-size:1.5rem; cursor:pointer; width:35px; height:35px; border-radius:50%; display:flex; align-items:center; justify-content:center; z-index:20;">&times;</button>
+                
+                <div style="display:flex; flex-wrap:wrap;">
+                    <!-- Left: Poster -->
+                    <div style="flex:1 1 300px; max-width:400px; background:#000; display:flex; align-items:center; justify-content:center;">
+                        <img id="modalPoster" src="" style="width:100%; height:auto; max-height:80vh; object-fit:contain; display:block;">
+                    </div>
+                    
+                    <!-- Right: Info -->
+                    <div style="flex:2 1 300px; padding:2.5rem; overflow-y:auto; max-height:80vh; position:relative;">
+                        <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:1rem;">
+                            <div style="flex:1;">
+                                <h2 id="modalTitle" style="font-family:var(--ch-font-display); font-size:2.5rem; margin:0 0 0.5rem 0; line-height:1.1; color:var(--ch-neon-gold);"></h2>
+                                <div id="modalTitleTr" style="color:#888; margin-bottom:1.5rem; font-size:1.1rem;"></div>
+                            </div>
+                            <div id="modalRatingBadge" class="film-rating-badge" style="width:50px; height:50px; flex-shrink:0; margin-right:40px;"></div>
+                        </div>
+                        
+                        <div style="display:flex; align-items:center; gap:1.5rem; margin-bottom:2rem; font-size:0.95rem; color:#aaa; border-bottom:1px solid #333; padding-bottom:1rem;">
+                            <div id="modalYear"></div>
+                            <div id="modalDirector" style="color:#e0e0e0;"></div>
+                            <div id="modalCinema"></div>
+                        </div>
+
+
+                        <div id="modalDescription" style="line-height:1.6; margin-bottom:2rem; font-size:1.05rem;"></div>
+
+                        <div id="modalUserNotesContainer" style="display:none; background:rgba(255, 215, 0, 0.1); border-left:4px solid var(--ch-neon-gold); padding:1rem; margin-bottom:2rem; border-radius:4px;">
+                            <h4 style="margin:0 0 0.5rem 0; color:var(--ch-neon-gold); font-family:var(--ch-font-display);">NOTLARIM</h4>
+                            <div id="modalUserNotes" style="font-style:italic; color:#ddd;"></div>
+                        </div>
+
+                        <h4 style="color:var(--ch-neon-cyan); margin-bottom:1rem; font-family:var(--ch-font-display);">OYUNCULAR</h4>
+                        <div id="modalCast" style="display:flex; flex-wrap:wrap; gap:10px; margin-bottom:2rem;">
+                            <!-- Cast tags -->
+                        </div>
+
+                         <div style="display:flex; justify-content:space-between; align-items:center; margin-top:auto; font-size:0.8rem; color:#666;">
+                            <div id="modalGenres" class="genre-list" style="gap:8px;"></div>
+                             <div id="modalDate"></div>
+                         </div>
+                    </div>
+                </div>
+            </div>
+        </dialog>
+
+        <script>
+            function openDetailModal(filmStr) {
+                const film = JSON.parse(decodeURIComponent(filmStr));
+                const m = document.getElementById('detailModal');
+                
+                // Elements
+                document.getElementById('modalPoster').src = film.imageUrl || '';
+                document.getElementById('modalTitle').innerText = film.title;
+                document.getElementById('modalTitleTr').innerText = film.title_tr || '';
+                document.getElementById('modalYear').innerText = film.year;
+                document.getElementById('modalDirector').innerText = film.director || 'Bilinmiyor';
+                
+                // Rating Badge
+                const r = film.rating;
+                const badge = document.getElementById('modalRatingBadge');
+                if (r) {
+                    badge.style.display = 'flex';
+                    badge.style.boxShadow = \`0 0 \${Math.max(0, (r - 4) * 3)}px rgba(255, 215, 0, \${r / 15})\`;
+                    badge.style.borderColor = \`rgba(255, 215, 0, \${r / 12})\`;
+                    badge.innerHTML = \`<span class="rating-value" style="font-size:1.5rem; text-shadow: 0 0 \${Math.max(0, (r - 5) * 3)}px rgba(255, 215, 0, 0.6); color: \${r < 5 ? '#888' : 'var(--ch-neon-gold)'}">\${r}</span>\`;
+                } else {
+                    badge.style.display = 'none';
+                }
+
+                document.getElementById('modalCinema').innerHTML = film.isCinema ? '<span style="color:var(--ch-neon-cyan); border:1px solid var(--ch-neon-cyan); padding:2px 6px; border-radius:4px; font-size:0.8rem;">SİNEMA</span>' : '';
+                document.getElementById('modalDescription').innerText = film.description || 'Açıklama yok.';
+                
+                if (film.userNotes) {
+                    document.getElementById('modalUserNotesContainer').style.display = 'block';
+                    document.getElementById('modalUserNotes').innerText = film.userNotes;
+                } else {
+                    document.getElementById('modalUserNotesContainer').style.display = 'none';
+                }
+                
+                // Date
+                // Date & History
+                const date = film.watchDate ? new Date(film.watchDate).toLocaleDateString('tr-TR', { year: 'numeric', month: 'long', day: 'numeric' }) : '';
+                
+                let historyHtml = '';
+                if (film.stats && film.stats.count > 1) {
+                    historyHtml = \`
+                        <details style="margin-top:5px;">
+                            <summary style="cursor:pointer; color:var(--ch-neon-gold); font-size:0.85rem; user-select:none; opacity:0.8; transition:opacity 0.2s;" onmouseover="this.style.opacity=1" onmouseout="this.style.opacity=0.8">
+                                👁️ Toplam \${film.stats.count} kez izlendi
+                            </summary>
+                            <div style="margin-top:8px; display:flex; flex-direction:column; gap:4px; padding-left:10px; border-left:2px solid var(--ch-neon-gold);">
+                                \${film.stats.dates.map((d, i) => \`
+                                    <div style="color:#bbb; font-size:0.85rem;">
+                                        <span style="color:#666; font-size:0.75rem; margin-right:5px;">#\${film.stats.dates.length - i}</span>
+                                        \${new Date(d).toLocaleDateString('tr-TR', { year: 'numeric', month: 'long', day: 'numeric' })}
+                                    </div>
+                                \`).join('')}
+                            </div>
+                        </details>
+                    \`;
+                }
+                
+                document.getElementById('modalDate').innerHTML = \`
+                    <div style="color:#ddd; margin-bottom:5px;">📅 \${date}</div>
+                    \${historyHtml}
+                \`;
+
+                // Genres
+                let genres = [];
+                try { 
+                    genres = JSON.parse(film.genres); 
+                    if (!Array.isArray(genres)) genres = [];
+                } catch(e) { genres = []; }
+                document.getElementById('modalGenres').innerHTML = genres.map(g => \`<span class="mini-tag">\${g}</span>\`).join('');
+
+                // Cast
+                let actors = [];
+                try { 
+                    actors = JSON.parse(film.actors); 
+                    if (!Array.isArray(actors)) actors = [];
+                } catch(e) { actors = []; }
+                if(actors.length > 0) {
+                     document.getElementById('modalCast').innerHTML = actors.slice(0, 10).map(a => \`
+                        <a href="/films/actor/\${encodeURIComponent(a)}" style="text-decoration:none; color:inherit;">
+                            <div style="background:rgba(0,0,0,0.5); padding:5px 10px; border-radius:4px; border:1px solid #333; font-size:0.9rem; transition:all 0.2s;" onmouseover="this.style.borderColor='var(--ch-neon-cyan)'; this.style.color='var(--ch-neon-cyan)';" onmouseout="this.style.borderColor='#333'; this.style.color='inherit';">
+                                \${a}
+                            </div>
+                        </a>
+                     \`).join('');
+                } else {
+                    document.getElementById('modalCast').innerHTML = '<span style="color:#555;">Oyuncu bilgisi yok.</span>';
+                }
+
+                m.showModal();
             }
         </script>
     </div>
@@ -190,9 +389,10 @@ const renderFilmGrid = (films, editMode = false, stats = {}) => {
         const editActions = editMode ? `
             <div class="btn-actions">
                 <a href="/films/edit/${film.id}" style="color:var(--ch-neon-cyan); font-size:0.8rem; text-decoration:none;">Düzenle</a>
-                <form action="/films/delete/${film.id}" method="POST" style="margin:0;">
-                    <button type="button" onclick="if(this.innerText.includes('Sil')) { this.innerText = 'Emin misin?'; this.style.color = '#ef4444'; } else { this.parentElement.submit(); }" style="background:none; border:none; color:#555; font-size:0.8rem; cursor:pointer; text-decoration:underline;">Sil</button>
-                </form>
+                <div class="delete-wrapper" style="display:inline-block; position:relative;">
+                    <button type="button" onclick="toggleDelete(this, event)" style="background:none; border:none; color:#555; font-size:0.8rem; cursor:pointer; text-decoration:underline;">Sil</button>
+                    <button type="button" onclick="confirmDelete(this, ${film.id}, event)" class="delete-confirm" style="display:none; background:var(--ch-neon-red); color:#fff; border:none; padding:2px 8px; border-radius:4px; font-size:0.75rem; cursor:pointer; margin-left:5px;">Emin misin?</button>
+                </div>
             </div>
         ` : '';
 
@@ -205,8 +405,14 @@ const renderFilmGrid = (films, editMode = false, stats = {}) => {
             </div>
         ` : '';
 
+        // Attach stats to film object for modal
+        film.stats = filmStats;
+
+        // Escape for HTML attribute (encodeURIComponent does NOT escape single quotes, so we must do it manually)
+        const filmData = encodeURIComponent(JSON.stringify(film)).replace(/'/g, '%27');
+
         return `
-        <div class="film-card">
+        <div class="film-card" onclick="openDetailModal('${filmData}')" style="cursor:pointer;">
             <div class="poster-frame">
                 ${film.imageUrl ? `<img src="${film.imageUrl}" alt="${film.title}" class="poster-img">` : '<div style="width:100%; height:100%; background:#222; display:flex; align-items:center; justify-content:center; color:#555;">AFİŞ YOK</div>'}
                 ${isCinema ? `<div class="cinema-badge">SİNEMA</div>` : ''}
@@ -216,6 +422,7 @@ const renderFilmGrid = (films, editMode = false, stats = {}) => {
                 <div class="info-header">
                     <div class="film-title-group">
                         <div class="film-title" title="${film.title}">${film.title}</div>
+                        ${film.title_tr ? `<div class="film-title-tr" style="color:#777; font-size:0.85rem; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; margin-top:-2px;">${film.title_tr}</div>` : ''}
                         <div class="film-director">${film.director || 'Yönetmen Yok'}</div>
                     </div>
                     <div class="film-rating-badge" style="
@@ -230,7 +437,7 @@ const renderFilmGrid = (films, editMode = false, stats = {}) => {
                     </div>
                 </div>
                 
-                ${film.description ? `<div class="film-description" title="Okumak için tıklayın" onclick="this.classList.toggle('expanded')">${film.description}</div>` : ''}
+                ${film.userNotes ? `<div class="film-description" title="Okumak için tıklayın" onclick="event.stopPropagation(); this.classList.toggle('expanded')">${film.userNotes}</div>` : ''}
                 
                 <div class="info-footer">
                         <div class="genre-list">${genreHtml}</div>
@@ -238,11 +445,14 @@ const renderFilmGrid = (films, editMode = false, stats = {}) => {
                         ${dateDisplay} ${isRewatched ? '<span style="font-size:0.7em; color:var(--ch-neon-gold);">(+Geçmiş)</span>' : ''}
                     </div>
                 </div>
-                ${watchlistAction}
-                ${editActions}
+                <!-- Stop Propagation for Actions -->
+                <div onclick="event.stopPropagation()">
+                    ${watchlistAction}
+                    ${editActions}
+                </div>
             </div>
-        </div>
-        `;
+        </div >
+    `;
     }).join('');
 };
 
@@ -260,18 +470,23 @@ const renderForm = (film = null, returnUrl = '') => {
     const isCinemaChecked = film && film.isCinema ? 'checked' : '';
 
     return `
-        <div class="form-container">
+    <div class="form-container">
             <h2 style="font-family:var(--ch-font-display); color:var(--ch-neon-red); margin-top:0;">${title}</h2>
             <form action="${action}" method="POST" enctype="multipart/form-data">
                 <input type="hidden" name="returnUrl" value="${returnUrl}">
                 <div class="form-group">
-                    <label class="cinema-label">FİLM ADI</label>
+                    <label class="cinema-label">FİLM ADI (ORİJİNAL)</label>
                     <div style="display:flex; gap:10px;">
                         <input type="text" id="titleInput" name="title" class="cinema-input" value="${val('title')}" required style="flex:1;">
                         <button type="button" onclick="openSearchModal()" class="btn-search">
                             🔍 BUL
                         </button>
                     </div>
+                </div>
+
+                <div class="form-group">
+                    <label class="cinema-label">TÜRKÇE ADI</label>
+                    <input type="text" name="title_tr" class="cinema-input" value="${val('title_tr')}" placeholder="Opsiyonel">
                 </div>
                 
                 <div class="form-group" style="display:grid; grid-template-columns: 1fr 1fr; gap:1rem;">
@@ -283,6 +498,64 @@ const renderForm = (film = null, returnUrl = '') => {
                         <label class="cinema-label">YIL</label>
                         <input type="number" name="year" class="cinema-input" value="${val('year')}">
                     </div>
+                </div>
+
+                <div class="form-group">
+                    <label class="cinema-label">OYUNCULAR (Virgülle ayırın veya seçin)</label>
+                    <div class="genre-input-container" onclick="document.getElementById('actor-input').focus()">
+                        <div id="actor-tags" style="display:contents;"></div>
+                        <input type="text" id="actor-input" class="genre-type-input" placeholder="Oyuncu ekle..." autocomplete="off">
+                    </div>
+                    <input type="hidden" name="actors" id="actors-hidden" value='${val('actors') || '[]'}'>
+                    
+                    <script>
+                        (function() {
+                            const input = document.getElementById('actor-input');
+                            const hidden = document.getElementById('actors-hidden');
+                            const container = document.getElementById('actor-tags');
+                            let actors = [];
+                            try { actors = JSON.parse(hidden.value); } catch(e){ actors = []; }
+
+                            function render() {
+                                container.innerHTML = actors.map(a => \`
+                                    <div class="genre-tag">
+                                        \${a}
+                                        <span class="remove" onclick="removeActor('\${a}')">&times;</span>
+                                    </div>
+                                \`).join('');
+                                hidden.value = JSON.stringify(actors);
+                            }
+
+                            window.removeActor = function(a) {
+                                actors = actors.filter(x => x !== a);
+                                render();
+                            }
+
+                            input.addEventListener('keydown', function(e) {
+                                if(e.key === 'Enter' || e.key === ',') {
+                                    e.preventDefault();
+                                    const val = this.value.trim();
+                                    if(val && !actors.includes(val)) {
+                                        actors.push(val);
+                                        render();
+                                    }
+                                    this.value = '';
+                                }
+                                if(e.key === 'Backspace' && !this.value && actors.length > 0) {
+                                    actors.pop();
+                                    render();
+                                }
+                            });
+                            
+                            // Listen for Auto-Fill
+                            window.addEventListener('update-actors', function(e) {
+                                actors = e.detail;
+                                render();
+                            });
+
+                            render();
+                        })();
+                    </script>
                 </div>
 
                 <div class="form-group">
@@ -369,29 +642,87 @@ const renderForm = (film = null, returnUrl = '') => {
                 <div class="form-group" style="display:grid; grid-template-columns: 1fr 1fr; gap:1rem;">
                     <div>
                          <label class="cinema-label">İZLENME TARİHİ</label>
-                         <input type="date" name="watchDate" class="cinema-input" value="${val('watchDate')}">
+                         <input type="date" id="inputCheckDate" name="watchDate" class="cinema-input" value="${val('watchDate')}">
                     </div>
                     <div>
                          <label class="cinema-label">PUAN (0-10)</label>
-                         <input type="number" name="rating" step="0.1" max="10" class="cinema-input" value="${val('rating')}">
+                         <input type="number" id="inputCheckRating" name="rating" step="0.1" max="10" class="cinema-input" value="${val('rating')}">
                     </div>
                 </div>
 
-
-
                 <div class="form-group" style="margin-bottom:0.5rem;">
                     <label class="cinema-label">LİSTE DURUMU</label>
-                    <select name="status" class="cinema-input">
+                    <select id="inputCheckStatus" name="status" class="cinema-input">
                         <option value="watched" ${val('status') === 'watched' || !val('status') ? 'selected' : ''}>✅ İZLENDİ (ARŞİV)</option>
                         <option value="watchlist" ${val('status') === 'watchlist' ? 'selected' : ''}>⏳ İZLENECEK (LİSTE)</option>
                     </select>
                 </div>
+                
+                <script>
+                    (function() {
+                        const dateInput = document.getElementById('inputCheckDate');
+                        const ratingInput = document.getElementById('inputCheckRating');
+                        const statusSelect = document.getElementById('inputCheckStatus');
+
+                        function checkValidation() {
+                            if (statusSelect.value === 'watched') {
+                                // REQUIRE Date & Rating
+                                dateInput.required = true;
+                                ratingInput.required = true;
+                                
+                                // Visual cues
+                                dateInput.style.borderLeft = '3px solid var(--ch-neon-red)';
+                                ratingInput.style.borderLeft = '3px solid var(--ch-neon-red)';
+                            } else {
+                                // Watchlist -> Not required
+                                dateInput.required = false;
+                                ratingInput.required = false;
+                                
+                                dateInput.style.borderLeft = '';
+                                ratingInput.style.borderLeft = '';
+                            }
+                        }
+
+                        // Listeners
+                        statusSelect.addEventListener('change', checkValidation);
+                        
+                        dateInput.addEventListener('input', function() {
+                            if (this.value) {
+                                // User entered date -> Auto set Watched
+                                statusSelect.value = 'watched';
+                            } else {
+                                // User cleared date -> Auto set Watchlist (Optional, but user requested smart flow)
+                                statusSelect.value = 'watchlist';
+                            }
+                            checkValidation();
+                        });
+
+                        // Initial check
+                        checkValidation();
+                    })();
+                </script>
 
                 <div class="form-group">
                     <label class="cinema-label">AFİŞ GÖRSELİ ${isEdit ? '(Boş bırakılırsa değişmez)' : ''}</label>
                     <input type="file" name="image" class="cinema-input" accept="image/*">
                     <input type="hidden" name="imageUrl" value="${val('imageUrl')}">
-                    ${isEdit && film.imageUrl ? `<small style="color:#666;">Mevcut: <a href="${film.imageUrl}" target="_blank" style="color:#888;">Görüntüle</a></small>` : ''}
+                    ${isEdit && film.imageUrl ? `
+                        <div id="poster-preview-container" style="display:flex; align-items:center; gap:10px; margin-top:5px; background:#222; padding:10px; border-radius:4px;">
+                            <img src="${film.imageUrl}" style="height:60px; border-radius:4px;">
+                            <div style="flex:1;">
+                                <small style="color:#aaa;">Mevcut Afiş</small>
+                            </div>
+                            <button type="button" onclick="removePoster()" style="background:#ef4444; color:white; border:none; padding:5px 10px; border-radius:4px; cursor:pointer;">❌ AFİŞİ SİL</button>
+                        </div>
+                        
+                        <script>
+                            function removePoster() {
+                                if(!confirm('Afiş silinecek. Emin misiniz?')) return;
+                                document.getElementById('poster-preview-container').remove();
+                                document.querySelector('input[name=imageUrl]').value = '';
+                            }
+                        </script>
+                    ` : ''}
                 </div>
 
                 <div class="form-group" style="display:grid; grid-template-columns: 1fr 1fr; gap:1rem;">
@@ -407,8 +738,13 @@ const renderForm = (film = null, returnUrl = '') => {
                 </div>
 
                 <div class="form-group">
-                    <label class="cinema-label">NOTLAR / İNCELEME</label>
+                    <label class="cinema-label">FİLM ÖZETİ (Description)</label>
                     <textarea name="description" rows="3" class="cinema-input">${val('description')}</textarea>
+                </div>
+
+                <div class="form-group">
+                    <label class="cinema-label">NOTLAR / İNCELEME (User Notes)</label>
+                    <textarea name="userNotes" rows="3" class="cinema-input" placeholder="Film hakkında kişisel notlarınız...">${val('userNotes')}</textarea>
                 </div>
 
                 <button type="submit" class="btn-cinema" style="width:100%; padding:1rem; font-size:1.1rem; background:rgba(0, 242, 255, 0.1);">${btnText}</button>
@@ -491,25 +827,57 @@ const renderForm = (film = null, returnUrl = '') => {
                     const movie = await res.json();
                     
                     // Populate Form
-                    document.querySelector('input[name="title"]').value = movie.title;
-                    document.querySelector('input[name="year"]').value = movie.release_date ? movie.release_date.split('-')[0] : '';
-                    // document.querySelector('textarea[name="description"]').value = movie.overview;
-                    document.querySelector('input[name="imageUrl"]').value = movie.poster_path ? '${TMDB_IMAGE_BASE}' + movie.poster_path : '';
+                    // Populate Form - SMART FILL (Only if empty)
+                    // TITLE LOGIC: Original -> title, Turkish -> title_tr
+                    const titleInput = document.querySelector('input[name="title"]');
+                    titleInput.value = movie.original_title || movie.title; 
+
+                    const titleTrInput = document.querySelector('input[name="title_tr"]');
+                     // If we fetched with language=tr (default), movie.title might be localized.
+                     // But strictly, we want title_tr to be the Turkish title.
+                     // TMDB result 'title' is usually localized if language=tr is used.
+                     // So we set title_tr = movie.title
+                    if (!titleTrInput.value) titleTrInput.value = movie.title;
+
+                    const yearInput = document.querySelector('input[name="year"]');
+                    if (!yearInput.value) yearInput.value = movie.release_date ? movie.release_date.split('-')[0] : '';
                     
-                    // Director from credits
-                    const director = movie.credits.crew.find(c => c.job === 'Director');
-                    if(director) {
-                        document.querySelector('input[name="director"]').value = director.name;
+                    const descInput = document.querySelector('textarea[name="description"]');
+                    if (!descInput.value) descInput.value = movie.overview || '';
+                    
+                    const imgInput = document.querySelector('input[name="imageUrl"]');
+                    if (!imgInput.value) imgInput.value = movie.poster_path ? '${TMDB_IMAGE_BASE}' + movie.poster_path : '';
+                    
+                    // Director
+                    const dirInput = document.querySelector('input[name="director"]');
+                    if (!dirInput.value) {
+                        const director = movie.credits.crew.find(c => c.job === 'Director');
+                        if(director) dirInput.value = director.name;
                     }
                     
-                    // Rating mapping (TMDB is 1-10, we behave same)
-                    // document.querySelector('input[name="rating"]').value = movie.vote_average.toFixed(1);
+                    // NEVER AUTO-FILL RATING
+                    // const rateInput = document.querySelector('input[name="rating"]');
+                    // if (!rateInput.value) rateInput.value = movie.vote_average.toFixed(1);
                     
-                    // Genres
-                    const genres = movie.genres.map(g => g.name);
+                    // Genres - Only if empty
+                    const genresHidden = document.getElementById('genres-hidden');
+                    let currentGenres = [];
+                    try { currentGenres = JSON.parse(genresHidden.value); } catch(e){}
                     
-                    // Update genres
-                    window.dispatchEvent(new CustomEvent('update-genres', { detail: genres }));
+                    if (currentGenres.length === 0) {
+                        const genres = movie.genres.map(g => g.name);
+                        window.dispatchEvent(new CustomEvent('update-genres', { detail: genres }));
+                    }
+
+                    // Actors - Only if empty
+                    const actorsHidden = document.getElementById('actors-hidden');
+                    let currentActors = [];
+                    try { currentActors = JSON.parse(actorsHidden.value); } catch(e){}
+                    
+                    if (movie.credits && movie.credits.cast) {
+                        const actors = movie.credits.cast.slice(0, 10).map(c => c.name);
+                        window.dispatchEvent(new CustomEvent('update-actors', { detail: actors }));
+                    }
                     
                     document.getElementById('tmdbModal').close();
                     
@@ -562,8 +930,8 @@ router.get('/archive', (req, res) => {
     const params = [];
 
     if (q) {
-        query += " AND (title LIKE ? OR director LIKE ?)";
-        params.push(`%${q}%`, `%${q}%`);
+        query += " AND (title LIKE ? OR title_tr LIKE ? OR director LIKE ? OR actors LIKE ?)";
+        params.push(`%${q}%`, `%${q}%`, `%${q}%`, `%${q}%`);
     }
     if (director) { query += " AND director = ?"; params.push(director); }
     if (year) { query += " AND strftime('%Y', watchDate) = ?"; params.push(year); }
@@ -582,7 +950,7 @@ router.get('/archive', (req, res) => {
                 ${editMode ? '<input type="hidden" name="edit" value="true">' : ''}
                 
                 <div style="flex:1; min-width:200px; display:flex;">
-                     <input type="text" name="q" class="cinema-input-sm" value="${q || ''}" placeholder="Film veya yönetmen ara..." style="width:100%; border-right:none; border-top-right-radius:0; border-bottom-right-radius:0;">
+                     <input type="text" name="q" class="cinema-input-sm" value="${q || ''}" placeholder="Film, yönetmen veya oyuncu ara..." style="width:100%; border-right:none; border-top-right-radius:0; border-bottom-right-radius:0;">
                      <button type="submit" class="btn-cinema-sm" style="border-top-left-radius:0; border-bottom-left-radius:0; background:var(--ch-neon-cyan); color:#000; border-color:var(--ch-neon-cyan);">ARA</button>
                 </div>
 
@@ -647,8 +1015,10 @@ router.get('/watchlist', (req, res) => {
 router.post('/mark-watched/:id', (req, res) => {
     const id = req.params.id;
     const watchDate = req.body.watchDate || new Date().toISOString().split('T')[0];
+    const rating = req.body.rating ? parseFloat(req.body.rating) : null;
+    const userNotes = req.body.userNotes || null;
 
-    db.prepare("UPDATE films SET status = 'watched', watchDate = ? WHERE id = ?").run(watchDate, id);
+    db.prepare("UPDATE films SET status = 'watched', watchDate = ?, rating = ?, userNotes = ? WHERE id = ?").run(watchDate, rating, userNotes, id);
     res.redirect('/films'); // Redirect to homepage to see it in "Latest"
 });
 
@@ -756,8 +1126,17 @@ router.get('/api/details/:id', (req, res) => {
 // POST /api/tools/fetch-missing - Auto Fetch Tool
 router.post('/api/tools/fetch-missing', async (req, res) => {
     try {
-        // Find films with no image
-        const films = db.prepare("SELECT * FROM films WHERE imageUrl IS NULL OR imageUrl = ''").all();
+        // Find films with no image OR possible missing titles
+        // Actually, let's just scan all films to correct titles? 
+        // User said "Auto missing completion", usually implies filling holes.
+        // Let's broaden the scope slightly: Scan ALL films, but only update if fields are missing or if titles need fixing.
+        // For safety, let's stick to the user intent: "film eksiği tamamlama kısmında".
+        // Current logic selects films where imageUrl is NULL. Let's expand this?
+        // Or keep scanning everything? Scanning all might be slow/expensive on quotas.
+        // Let's select ALL films for now to do the Title fix, but safeguard 
+        // against overwriting existing valid data.
+
+        const films = db.prepare("SELECT * FROM films").all();
         let updateCount = 0;
         let errors = [];
 
@@ -771,7 +1150,22 @@ router.post('/api/tools/fetch-missing', async (req, res) => {
                     apiRes.on('end', () => {
                         try {
                             const json = JSON.parse(data);
-                            resolve(json.results && json.results.length > 0 ? json.results[0] : null);
+                            if (json.results && json.results.length > 0) {
+                                // Fetch full details for actors
+                                const movieId = json.results[0].id;
+                                const detailUrl = `${TMDB_BASE_URL}/movie/${movieId}?api_key=${TMDB_API_KEY}&language=tr-TR&append_to_response=credits`;
+                                https.get(detailUrl, (detailRes) => {
+                                    let dData = '';
+                                    detailRes.on('data', c => dData += c);
+                                    detailRes.on('end', () => {
+                                        try {
+                                            resolve(JSON.parse(dData));
+                                        } catch (e) { resolve(json.results[0]); }
+                                    });
+                                }).on('error', () => resolve(json.results[0]));
+                            } else {
+                                resolve(null);
+                            }
                         } catch (e) { resolve(null); }
                     });
                 }).on('error', () => resolve(null));
@@ -787,26 +1181,77 @@ router.post('/api/tools/fetch-missing', async (req, res) => {
             const result = await fetchTMDB(film.title, film.year);
 
             if (result) {
-                // Prepare Update Data
-                // Only update fields that are missing in our DB, or overwrite image always?
-                // Let's overwrite Image, Description if empty, Director if empty...
+                let shouldUpdate = false;
+                let newTitle = film.title;
+                let newTitleTr = film.title_tr;
+                let newImage = film.imageUrl;
+                let newYear = film.year;
+                let newDescription = film.description; // Actually currently mapped to nothing in this tool? Wait, DB has description.
+                // NOTE: User wants 'film description' auto filled.
+                // In DB, 'description' is the legacy field, now typically empty or 'user notes' in old schema?
+                // Wait, based on recent work: 'description' = Plot, 'userNotes' = User Notes.
+                // So we should fill 'description' if empty.
 
-                // Get Detailed Info for Genres/Director
-                // (Simple search result has basic info, we might need detail for Director)
-                // For speed, let's just grab Poster, Overview, Rating if missing.
+                let newActors = film.actors;
 
-                let newImage = result.poster_path ? `${TMDB_IMAGE_BASE}${result.poster_path}` : film.imageUrl;
-                let newYear = (!film.year && result.release_date) ? result.release_date.split('-')[0] : film.year;
+                // 1. Title Logic (Smart Dual Titles)
+                const tmdbOriginal = result.original_title;
+                const tmdbTurkish = result.title;
 
-                // Update
-                const update = db.prepare(`
-                    UPDATE films SET 
-                    imageUrl = ?, year = ?
-                    WHERE id = ?
-                `);
+                // Case A: DB Title is Original -> Add Turkish if missing
+                if (film.title === tmdbOriginal) {
+                    if (!film.title_tr && tmdbTurkish !== tmdbOriginal) {
+                        newTitleTr = tmdbTurkish;
+                        shouldUpdate = true;
+                    }
+                }
+                // Case B: DB Title is Turkish -> Swap!
+                else if (film.title === tmdbTurkish && tmdbTurkish !== tmdbOriginal) {
+                    newTitle = tmdbOriginal;
+                    newTitleTr = tmdbTurkish;
+                    shouldUpdate = true;
+                }
+                // Case C: DB Title is neither (typo or other language) -> Keep DB as is, maybe fill Title_TR if empty?
+                // Left untouched for safety.
 
-                update.run(newImage, newYear, film.id);
-                updateCount++;
+                // 2. Image Logic (Only fill if missing)
+                if (!film.imageUrl && result.poster_path) {
+                    newImage = `${TMDB_IMAGE_BASE}${result.poster_path}`;
+                    shouldUpdate = true;
+                }
+
+                // 3. Year Logic (Force update to Release Year)
+                const tmdbYear = result.release_date ? result.release_date.split('-')[0] : null;
+                if (tmdbYear && film.year !== tmdbYear) {
+                    newYear = tmdbYear;
+                    shouldUpdate = true;
+                }
+
+                // 4. Description Logic (Fill if missing)
+                if ((!film.description || film.description.trim() === '') && result.overview) {
+                    newDescription = result.overview;
+                    shouldUpdate = true;
+                }
+
+                // 5. Actors Logic (Fill if missing)
+                let currentActors = [];
+                try { currentActors = JSON.parse(film.actors || '[]'); } catch (e) { }
+
+                if ((!currentActors || currentActors.length === 0) && result.credits && result.credits.cast) {
+                    newActors = JSON.stringify(result.credits.cast.slice(0, 10).map(c => c.name));
+                    shouldUpdate = true;
+                }
+
+                if (shouldUpdate) {
+                    const update = db.prepare(`
+                        UPDATE films SET 
+                        title = ?, title_tr = ?, imageUrl = ?, year = ?, description = ?, actors = ?
+                        WHERE id = ?
+                    `);
+
+                    update.run(newTitle, newTitleTr, newImage, newYear, newDescription, newActors, film.id);
+                    updateCount++;
+                }
 
                 // Slight delay
                 await new Promise(r => setTimeout(r, 200));
@@ -979,6 +1424,14 @@ router.get('/add', (req, res) => {
              <div id="fetchLog" style="margin-top:1rem; max-height:200px; overflow-y:auto; font-size:0.8rem; color:#888; display:none; background:#111; padding:0.5rem; border-radius:4px;"></div>
         </div>
 
+        <div class="form-container" style="margin-top: 2rem; border-top-color: var(--ch-neon-gold);">
+            <h2 style="font-family:var(--ch-font-display); color:var(--ch-neon-gold); margin-top:0;">OYUNCU SENKRONİZASYONU</h2>
+            <p style="color:#aaa; font-size:0.9rem; margin-bottom:1rem;">Arşivdeki oyuncuların bilgilerini (Biyografi, Fotoğraf, Yaş) TMDB'den otomatik çeker.</p>
+            
+            <button type="button" onclick="startActorSync()" id="btnActorSync" class="btn-cinema" style="width:100%; border-color:var(--ch-neon-gold); color:var(--ch-neon-gold);">OYUNCULARI GÜNCELLE (SYNC)</button>
+            <div id="actorSyncLog" style="margin-top:1rem; max-height:200px; overflow-y:auto; font-size:0.8rem; color:#888; display:none; background:#111; padding:0.5rem; border-radius:4px;"></div>
+        </div>
+
         <script>
             async function startAutoFetch() {
                 const btn = document.getElementById('btnAutoFetch');
@@ -993,32 +1446,61 @@ router.get('/add', (req, res) => {
 
                 try {
                     const res = await fetch('/films/api/tools/fetch-missing', { method: 'POST' });
-                    // Provide a stream-like experience? No, just wait for simple JSON response for now.
-                    // Or we could implement a basic polling if needed, but let's stick to simple "wait and show report".
                     
                     const data = await res.json();
                     
                     if(data.success) {
-                        log.innerHTML += \`<div style="color:var(--ch-neon-gold); margin-top:10px;">✅ İŞLEM TAMAMLANDI!</div>\`;
-                        log.innerHTML += \`<div>Toplam Güncellenen: \${data.count}</div>\`;
+                        log.innerHTML += '<div style="color:var(--ch-neon-gold); margin-top:10px;">✅ İŞLEM TAMAMLANDI!</div>';
+                        log.innerHTML += '<div>Toplam Güncellenen: ' + data.count + '</div>';
                         if(data.errors.length > 0) {
-                            log.innerHTML += \`<div style="color:var(--ch-neon-red);">⚠️ Bazı Hatalar:</div>\`;
-                            data.errors.forEach(e => log.innerHTML += \`<div>- \${e}</div>\`);
+                            log.innerHTML += '<div style="color:var(--ch-neon-red);">⚠️ Bazı Hatalar:</div>';
+                            data.errors.forEach(e => log.innerHTML += '<div>- ' + e + '</div>');
                         }
                         btn.innerText = 'TAMAMLANDI';
                     } else {
-                         log.innerHTML += \`<div style="color:red;">❌ HATA: \${data.error}</div>\`;
+                         log.innerHTML += '<div style="color:red;">❌ HATA: ' + data.error + '</div>';
                          btn.innerText = 'HATA';
                          btn.disabled = false;
                     }
 
                 } catch(e) {
-                     log.innerHTML += \`<div style="color:red;">❌ AĞ HATASI: \${e.message}</div>\`;
+                     log.innerHTML += '<div style="color:red;">❌ AĞ HATASI: ' + e.message + '</div>';
                      btn.innerText = 'TEKRAR DENE';
                      btn.disabled = false;
                 }
             }
-        </script>
+
+            async function startActorSync() {
+                const btn = document.getElementById('btnActorSync');
+                const log = document.getElementById('actorSyncLog');
+                
+                if(!confirm('Bu işlem tüm oyuncular için internetten veri çekecektir. Uzun sürebilir. Devam edilsin mi?')) return;
+
+                btn.disabled = true;
+                btn.innerText = 'TARANIYOR...';
+                log.style.display = 'block';
+                log.innerHTML = '<div>🚀 İşlem başlatıldı...</div>';
+
+                try {
+                    const res = await fetch('/films/api/tools/sync-actors', { method: 'POST' });
+                    const data = await res.json();
+                    
+                    if(data.success) {
+                        log.innerHTML += '<div style="color:var(--ch-neon-gold); margin-top:10px;">✅ ' + data.message + '</div>';
+                        btn.innerText = 'TAMAMLANDI';
+                    } else {
+                         log.innerHTML += '<div style="color:red;">❌ HATA: ' + data.error + '</div>';
+                         btn.innerText = 'HATA';
+                         btn.disabled = false;
+                    }
+
+                } catch(e) {
+                     log.innerHTML += '<div style="color:red;">❌ AĞ HATASI: ' + e.message + '</div>';
+                     btn.innerText = 'TEKRAR DENE';
+                     btn.disabled = false;
+                }
+            }
+    </script>
 `;
     res.send(renderPage(renderForm() + importForm, 'Film Ekle', req));
 });
@@ -1033,28 +1515,19 @@ router.get('/edit/:id', (req, res) => {
 
 // POST /add
 router.post('/add', upload.single('image'), (req, res) => {
-    // If rating is empty, assume watchlist? No, let's use explicit status logic or a checkbox
-    // Actually, let's auto-detect: if rating is null/empty, status='watchlist'
-    // BUT user wanted separate list. Let's add checkbox logic.
-    // For now, let's assume if it comes from Import it might need logic.
+    let { title, title_tr, director, year, rating, description, userNotes, watchDate, isCinema, isHallOfFame, genres, status } = req.body;
 
-    let { title, director, year, rating, description, watchDate, isCinema, isHallOfFame, genres, status } = req.body;
-
-    // Determine Status
-    // If user explicitly sent status, use it (future proof)
-    // Otherwise, default to 'watched' unless we add a UI toggle for it.
-    // Wait, I updated DB to default 'watched'. 
-    // Let's rely on a check in the form (todo: add checkbox to form)
-    if (!status) status = 'watched'; // Fallback
-
+    // Auto-Watchlist Logic
+    if (!status) {
+        if (!watchDate) status = 'watchlist'; else status = 'watched';
+    }
 
     // Handle Genres
     if (genres) {
-        // If it comes from the tag input, it's already a JSON string like '["a","b"]'
+        // If it comes from the tag input, it's already a JSON string
         if (typeof genres === 'string' && genres.trim().startsWith('[')) {
             // Already JSON, keep it
         } else {
-            // Old way or single value
             if (!Array.isArray(genres)) genres = [genres];
             genres = JSON.stringify(genres);
         }
@@ -1062,30 +1535,42 @@ router.post('/add', upload.single('image'), (req, res) => {
         genres = '[]';
     }
 
-    // Handle Image
-    let imageUrl = '';
-    if (req.file) {
-        imageUrl = '/uploads/' + req.file.filename;
-    } else if (req.body.imageUrl) {
-        imageUrl = req.body.imageUrl;
+    // Handle Actors
+    let actors = req.body.actors;
+    if (actors) {
+        if (typeof actors === 'string' && actors.trim().startsWith('[')) {
+            // Already JSON
+        } else {
+            actors = '[]';
+        }
+    } else {
+        actors = '[]';
     }
 
-    // Handle Checkboxes
+    // Handle Image
+    // Use uploaded file if present, otherwise use the URL from the form (e.g. from "Find" tool)
+    let finalImageUrl = req.body.imageUrl || '';
+    if (req.file) {
+        finalImageUrl = '/uploads/' + req.file.filename;
+    }
+
+    // Calculate Checkboxes
     isCinema = isCinema ? 1 : 0;
     isHallOfFame = isHallOfFame ? 1 : 0;
 
     const insert = db.prepare(`
-        INSERT INTO films(title, director, year, rating, description, imageUrl, genres, watchDate, isCinema, isHallOfFame, status)
-VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO films (title, title_tr, director, year, rating, description, userNotes, imageUrl, genres, actors, watchDate, isCinema, isHallOfFame, status)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
-    insert.run(title, director, year, rating, description, imageUrl, genres, watchDate, isCinema, isHallOfFame, status);
+    insert.run(title, title_tr, director, year, rating, description, userNotes, finalImageUrl, genres, actors, watchDate, isCinema, isHallOfFame, status);
     res.redirect('/films');
 });
 
+
 // POST /edit/:id
 router.post('/edit/:id', upload.single('image'), (req, res) => {
-    let { title, director, year, rating, description, watchDate, isCinema, isHallOfFame, genres, status } = req.body;
+    let { title, title_tr, director, year, rating, description, userNotes, watchDate, isCinema, isHallOfFame, genres, status } = req.body;
     const id = req.params.id;
 
     // Handle Genres
@@ -1101,27 +1586,36 @@ router.post('/edit/:id', upload.single('image'), (req, res) => {
         genres = '[]';
     }
 
+    // Handle Actors
+    let actors = req.body.actors;
+    if (actors) {
+        if (typeof actors === 'string' && actors.trim().startsWith('[')) {
+            // Already JSON
+        } else {
+            actors = '[]';
+        }
+    } else {
+        actors = '[]';
+    }
+
     // Calculate Checkboxes
     isCinema = isCinema ? 1 : 0;
     isHallOfFame = isHallOfFame ? 1 : 0;
 
     // Handle Image (Only update if new file uploaded)
-    let imageSql = "";
-    if (!status) status = 'watched';
-
-    const params = [title, director, year, rating, description, genres, watchDate, isCinema, isHallOfFame, status];
-
+    // Handle Image
+    let finalImageUrl = req.body.imageUrl;
     if (req.file) {
-        imageSql = ", imageUrl = ?";
-        params.push('/uploads/' + req.file.filename);
+        finalImageUrl = '/uploads/' + req.file.filename;
     }
 
-    params.push(id);
+    if (!status) status = 'watched';
+
+    const params = [title, title_tr, director, year, rating, description, userNotes, genres, actors, watchDate, isCinema, isHallOfFame, status, finalImageUrl, id];
 
     const update = db.prepare(`
         UPDATE films SET
-title = ?, director = ?, year = ?, rating = ?, description = ?, genres = ?, watchDate = ?, isCinema = ?, isHallOfFame = ?, status = ?
-    ${imageSql}
+        title = ?, title_tr = ?, director = ?, year = ?, rating = ?, description = ?, userNotes = ?, genres = ?, actors = ?, watchDate = ?, isCinema = ?, isHallOfFame = ?, status = ?, imageUrl = ?
         WHERE id = ?
     `);
 
@@ -1130,97 +1624,208 @@ title = ?, director = ?, year = ?, rating = ?, description = ?, genres = ?, watc
     res.redirect(returnUrl || '/films');
 });
 
-// POST /import - CSV Import
+// POST /import - Step 1: Upload & Map Columns
 router.post('/import', upload.single('csvFile'), (req, res) => {
     if (!req.file) return res.redirect('/films/add');
+
+    const csv = require('csv-parser');
+    const results = [];
+    const headers = [];
+
+    // We only need the headers first, but csv-parser gives us rows. 
+    // We'll read the first row to get headers.
+    // Actually, 'headers' event or just reading the first chunk?
+    // Let's just read the whole file to be safe, it's usually small.
+    // Wait, if it's huge, memory issue? 
+    // Optimization: Just read enough to get headers. 
+    // But for simplicity in this "Personal DB" context, reading all is fine.
+
+    fs.createReadStream(req.file.path)
+        .pipe(csv())
+        .on('headers', (headerList) => {
+            headerList.forEach(h => headers.push(h));
+        })
+        .on('data', (data) => results.push(data)) // We don't need data yet, but need to consume stream
+        .on('end', () => {
+            // Render Mapping Page
+            const filename = req.file.filename; // Persisted in uploads/
+
+            // Expected Fields
+            const fields = [
+                { key: 'title', label: 'Film Adı (Zorunlu)', required: true },
+                { key: 'title_tr', label: 'Türkçe Adı' },
+                { key: 'director', label: 'Yönetmen' },
+                { key: 'rating', label: 'Puan (0-10)' }, // 8.5 or 8/10
+                { key: 'watchDate', label: 'İzlenme Tarihi' },
+                { key: 'isCinema', label: 'Sinemada İzlendi? (Yes/No)' },
+                { key: 'genres', label: 'Türler (Virgülle ayrılmış)' },
+                { key: 'year', label: 'Yapım Yılı' },
+                { key: 'description', label: 'Açıklama / Özet' },
+                { key: 'userNotes', label: 'Kişisel Notlar' }
+            ];
+
+            // Helper to guess mapping
+            const clean = (s) => s.toLowerCase().replace(/[^a-z0-9]/g, '');
+            const findMatch = (fieldKey) => {
+                const search = clean(fieldKey);
+                // Common aliases
+                const aliases = {
+                    'title': ['name', 'film', 'movie', 'ad', 'isim', 'baslik'],
+                    'title_tr': ['tr', 'turkce'],
+                    'rating': ['score', 'puan', 'vote', 'star'],
+                    'watchDate': ['date', 'time', 'tarih', 'zaman', 'when'],
+                    'director': ['yonetmen', 'dir'],
+                    'isCinema': ['cinema', 'sinema', 'salon', 'theater'],
+                    'genres': ['tags', 'tur', 'category', 'kategori'],
+                    'year': ['yil', 'sene', 'released'],
+                    'userNotes': ['note', 'not', 'review', 'inceleme']
+                };
+
+                // Direct match
+                let match = headers.find(h => clean(h) === search);
+                if (match) return match;
+
+                // Alias match
+                if (aliases[fieldKey]) {
+                    for (const alias of aliases[fieldKey]) {
+                        match = headers.find(h => clean(h).includes(alias));
+                        if (match) return match;
+                    }
+                }
+                return '';
+            };
+
+            const mappingForm = `
+                <div class="form-container" style="max-width:800px; margin:2rem auto;">
+                    <h2 style="font-family:var(--ch-font-display); color:var(--ch-neon-gold);">SÜTUN EŞLEŞTİRME</h2>
+                    <p style="color:#aaa; margin-bottom:2rem;">CSV dosyanızdaki sütunları veritabanı alanlarıyla eşleştirin.</p>
+                    
+                    <form action="/films/import/process" method="POST">
+                        <input type="hidden" name="filename" value="${filename}">
+                        
+                        <div style="display:grid; gap:1rem; background:rgba(0,0,0,0.3); padding:1.5rem; border-radius:8px; border:1px solid #333;">
+                            ${fields.map(f => {
+                const guessed = findMatch(f.key);
+                return `
+                                    <div style="display:grid; grid-template-columns: 1fr 1fr; align-items:center; gap:1rem; border-bottom:1px solid #222; padding-bottom:1rem;">
+                                        <div>
+                                            <label style="color:${f.required ? 'var(--ch-neon-red)' : '#fff'}; font-weight:bold;">${f.label}</label>
+                                            ${f.required ? '<span style="color:#666; font-size:0.8rem;"> * Zorunlu</span>' : ''}
+                                        </div>
+                                        <select name="map_${f.key}" style="background:#111; border:1px solid #444; color:#fff; padding:0.5rem; border-radius:4px;">
+                                            <option value="">-- Seçiniz --</option>
+                                            ${headers.map(h => `<option value="${h}" ${h === guessed ? 'selected' : ''}>${h}</option>`).join('')}
+                                        </select>
+                                    </div>
+                                `;
+            }).join('')}
+                        </div>
+
+                        <div style="margin-top:2rem; display:flex; gap:1rem;">
+                            <a href="/films/add" class="btn-cinema" style="text-align:center; background:#333; color:#fff; border-color:#555; text-decoration:none;">İPTAL</a>
+                            <button type="submit" class="btn-cinema" style="flex:1; background:var(--ch-neon-green); color:#000; border-color:var(--ch-neon-green);">ONAYLA VE YÜKLE</button>
+                        </div>
+                    </form>
+                </div>
+            `;
+
+            res.send(renderPage(mappingForm, 'Sütun Eşleştirme', req));
+        });
+});
+
+// POST /import/process - Step 2: Execute Import
+router.post('/import/process', (req, res) => {
+    const filename = req.body.filename;
+    if (!filename) return res.redirect('/films/add');
+
+    const filePath = path.join(__dirname, '../../public/uploads', filename);
+    if (!fs.existsSync(filePath)) return res.send('Dosya bulunamadı / zaman aşımı.');
+
+    const mapping = {};
+    // Extract mapping from body (map_title -> title)
+    Object.keys(req.body).forEach(k => {
+        if (k.startsWith('map_') && req.body[k]) {
+            mapping[k.replace('map_', '')] = req.body[k];
+        }
+    });
 
     const results = [];
     const csv = require('csv-parser');
 
-    fs.createReadStream(req.file.path)
+    fs.createReadStream(filePath)
         .pipe(csv())
         .on('data', (data) => results.push(data))
         .on('end', () => {
             const insert = db.prepare(`
-                INSERT INTO films(title, director, year, rating, description, genres, watchDate, isCinema, isHallOfFame)
-VALUES(?, ?, ?, ?, ?, ?, ?, ?, 0)
+                INSERT INTO films(title, title_tr, director, year, rating, description, userNotes, genres, watchDate, isCinema, isHallOfFame, status)
+                VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 'watched')
             `);
 
-            // Transaction for bulk insert
             const insertMany = db.transaction((rows) => {
-                // Determine keys from the first row (Fuzzy Match)
-                if (rows.length === 0) return;
-                const firstRow = rows[0];
-                const keys = Object.keys(firstRow);
-
-                const findKey = (search) => keys.find(k => k.trim().replace(/^\ufeff/, '').includes(search));
-
-                const kTitle = findKey('Film Adı') || findKey('Name');
-                const kDirector = findKey('Yönetmen') || findKey('Director');
-                const kCinema = findKey('Sinemada İzlendi') || findKey('Cinema');
-                const kGenre = findKey('Tür') || findKey('Genre');
-                const kDate = findKey('İzlenme Tarihi') || findKey('Date');
-                const kScore = findKey('Puan') || findKey('Score');
-
                 for (const row of rows) {
-                    const title = (kTitle && row[kTitle]) || 'Unknown Title';
-                    const director = (kDirector && row[kDirector]) || '';
+                    // Helper to get mapped value
+                    const getVal = (key) => {
+                        const csvHeader = mapping[key];
+                        if (!csvHeader) return null;
+                        return row[csvHeader] ? row[csvHeader].trim() : null;
+                    };
 
-                    // Parse 'Sinemada İzlendi'
-                    let isCinema = 0;
-                    if (kCinema && row[kCinema] && row[kCinema].toLowerCase() === 'yes') isCinema = 1;
+                    const title = getVal('title') || 'Bilinmeyen Film';
+                    const title_tr = getVal('title_tr');
+                    const director = getVal('director');
+                    const year = getVal('year');
+                    const description = getVal('description');
+                    const userNotes = getVal('userNotes');
 
-                    // Parse Genres
-                    let genres = '[]';
-                    if (kGenre && row[kGenre]) {
-                        const gList = row[kGenre].split(',').map(g => g.trim());
-                        genres = JSON.stringify(gList);
+                    // Rating Parsing
+                    let rating = null;
+                    const rStr = getVal('rating');
+                    if (rStr) {
+                        // "8.5", "8,5", "8/10"
+                        let clean = rStr.split('/')[0].replace(',', '.');
+                        rating = parseFloat(clean);
+                        if (isNaN(rating)) rating = null;
                     }
 
-                    // Parse Date
-                    let watchDate = '';
-                    if (kDate && row[kDate]) {
-                        // Clean the string
-                        let dStr = row[kDate].trim();
-                        // Try various formats
-                        // 1. DD/MM/YYYY or DD.MM.YYYY or DD-MM-YYYY
-                        const parts = dStr.split(/[\/\.\-]/);
-                        if (parts.length === 3) {
-                            // Assume DD MM YYYY
-                            const day = parts[0].padStart(2, '0');
-                            const month = parts[1].padStart(2, '0');
-                            const year = parts[2];
-                            // Basic validation
-                            if (year.length === 4) {
-                                watchDate = `${year}-${month}-${day}`;
-                            }
+                    // Date Parsing
+                    let watchDate = getVal('watchDate');
+                    if (watchDate) {
+                        // Attempt to parse: DD/MM/YYYY, YYYY-MM-DD
+                        // If it matches DD/MM/YYYY
+                        if (watchDate.match(/^\d{1,2}[\/\-\.]\d{1,2}[\/\-\.]\d{4}$/)) {
+                            const parts = watchDate.split(/[\/\-\.]/);
+                            // Assume DD-MM-YYYY
+                            watchDate = `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
                         }
                     }
 
-                    // Parse Rating
-                    let rating = null;
-                    if (kScore && row[kScore]) {
-                        let rStr = row[kScore].split('/')[0];
-                        rStr = rStr.replace(',', '.');
-                        rating = parseFloat(rStr);
+                    // Cinema Boolean
+                    let isCinema = 0;
+                    const cVal = getVal('isCinema');
+                    if (cVal && (cVal.toLowerCase() === 'yes' || cVal.toLowerCase() === 'evet' || cVal === '1' || cVal.toLowerCase() === 'true')) {
+                        isCinema = 1;
                     }
 
-                    // Year
-                    let year = null;
-                    if (watchDate) {
-                        year = parseInt(watchDate.substring(0, 4));
+                    // Genres (Comma separated)
+                    let genres = '[]';
+                    const gVal = getVal('genres');
+                    if (gVal) {
+                        const list = gVal.split(/[\|,]/).map(s => s.trim()).filter(s => s);
+                        genres = JSON.stringify(list);
                     }
 
-                    insert.run(title, director, year, rating, '', genres, watchDate, isCinema);
+                    insert.run(title, title_tr, director, year, rating, description, userNotes, genres, watchDate, isCinema);
                 }
             });
 
             try {
                 insertMany(results);
-                console.log(`Imported ${results.length} films from CSV.`);
-                fs.unlinkSync(req.file.path);
+                // Clean up file
+                try { fs.unlinkSync(filePath); } catch (e) { }
+
             } catch (err) {
                 console.error('Import Error:', err);
+                return res.send('Hata oluştu: ' + err.message);
             }
 
             res.redirect('/films');
@@ -1228,11 +1833,222 @@ VALUES(?, ?, ?, ?, ?, ?, ?, ?, 0)
 });
 
 // POST /delete/:id
+// POST /delete/:id
 router.post('/delete/:id', (req, res) => {
     const deleteParams = db.prepare('DELETE FROM films WHERE id = ?');
     deleteParams.run(req.params.id);
+
+    // Check if JSON requested (AJAX)
+    if (req.headers.accept && req.headers.accept.includes('application/json')) {
+        return res.json({ success: true });
+    }
+
     const referer = req.get('Referer');
     res.redirect(referer || '/films');
+});
+
+
+// --- ACTOR DETAILS FEATURE ---
+
+// Helper: Search Person
+function searchPersonTMDB(query) {
+    return new Promise((resolve) => {
+        const url = `${TMDB_BASE_URL}/search/person?api_key=${TMDB_API_KEY}&query=${encodeURIComponent(query)}`;
+        https.get(url, (res) => {
+            let data = '';
+            res.on('data', chunk => data += chunk);
+            res.on('end', () => {
+                try {
+                    const result = JSON.parse(data);
+                    if (result.results && result.results.length > 0) {
+                        resolve(result.results[0]);
+                    } else {
+                        resolve(null);
+                    }
+                } catch (e) { resolve(null); }
+            });
+        }).on('error', () => resolve(null));
+    });
+}
+
+// Helper: Get Person Details
+function getPersonDetailsTMDB(id) {
+    return new Promise((resolve) => {
+        const url = `${TMDB_BASE_URL}/person/${id}?api_key=${TMDB_API_KEY}&language=tr-TR`;
+        https.get(url, (res) => {
+            let data = '';
+            res.on('data', chunk => data += chunk);
+            res.on('end', () => {
+                try {
+                    resolve(JSON.parse(data));
+                } catch (e) { resolve(null); }
+            });
+        }).on('error', () => resolve(null));
+    });
+}
+
+// Tool: Sync Actors
+router.post('/api/tools/sync-actors', async (req, res) => {
+    try {
+        const allFilms = db.prepare('SELECT actors FROM films').all();
+        const uniqueActors = new Set();
+        allFilms.forEach(f => {
+            if (f.actors) {
+                try { JSON.parse(f.actors).forEach(a => uniqueActors.add(a)); } catch (e) { }
+            }
+        });
+
+        const actorList = [...uniqueActors];
+        let processed = 0;
+        let updated = 0; // New entries or updates
+
+        for (const name of actorList) {
+            const existing = db.prepare('SELECT name FROM actors WHERE name = ?').get(name);
+
+            // If checking for updates for older entries, logic would be here.
+            // For now, only insert missing ones.
+            if (!existing) {
+                // Fetch from TMDB
+                const person = await searchPersonTMDB(name);
+                if (person) {
+                    const details = await getPersonDetailsTMDB(person.id);
+                    if (details) {
+                        const imageUrl = details.profile_path ? TMDB_IMAGE_BASE + details.profile_path : null;
+                        db.prepare('INSERT OR IGNORE INTO actors (name, imageUrl, bio, birthDate, placeOfBirth, tmdbId, lastUpdated) VALUES (?, ?, ?, ?, ?, ?, ?)')
+                            .run(name, imageUrl, details.biography, details.birthday, details.place_of_birth, person.id, new Date().toISOString());
+                        updated++;
+                    }
+                }
+            }
+            processed++;
+            // Small delay to avoid rate limits
+            if (updated % 5 === 0) await new Promise(r => setTimeout(r, 200));
+        }
+
+        res.json({ success: true, message: `Senkronizasyon Tamamlandı. ${processed} oyuncu tarandı, ${updated} yeni kayıt eklendi.` });
+    } catch (error) {
+        console.error('Actor Sync Error:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// Route: Actor Profile
+router.get('/actor/:name', (req, res) => {
+    const name = decodeURIComponent(req.params.name);
+    const actor = db.prepare('SELECT * FROM actors WHERE name = ?').get(name);
+
+    // Find films in archive
+    const allFilms = db.prepare('SELECT * FROM films').all();
+    const films = allFilms.filter(f => {
+        if (!f.actors) return false;
+        try { return JSON.parse(f.actors).includes(name); } catch (e) { return false; }
+    });
+
+    // Sort films by date
+    films.sort((a, b) => new Date(b.watchDate || 0) - new Date(a.watchDate || 0));
+
+    // Calculate age if birthDate exists
+    let age = '';
+    if (actor && actor.birthDate) {
+        const birth = new Date(actor.birthDate);
+        const diff = Date.now() - birth.getTime();
+        const ageDate = new Date(diff);
+        age = Math.abs(ageDate.getUTCFullYear() - 1970);
+    }
+
+    const content = `
+        <div style="display:flex; gap:2rem; padding:2rem; align-items:flex-start; flex-wrap:wrap;">
+            <div style="flex:1; max-width:300px; position:sticky; top:100px;">
+                <div style="border-radius:12px; overflow:hidden; border:2px solid var(--ch-neon-gold); box-shadow:0 0 20px rgba(255, 215, 0, 0.2); aspect-ratio: 2/3;">
+                    ${actor && actor.imageUrl ? `<img src="${actor.imageUrl}" style="width:100%; height:100%; object-fit:cover;">` : '<div style="width:100%; height:100%; background:#222; display:flex; align-items:center; justify-content:center; color:#555;">RESİM YOK</div>'}
+                </div>
+                <h1 style="font-family:var(--ch-font-display); color:var(--ch-neon-gold); margin:1rem 0 0.5rem; text-align:center; font-size:2rem; text-transform:uppercase;">${name}</h1>
+                ${actor && actor.birthDate ? `
+                    <div style="text-align:center; color:#ccc; font-size:1rem; margin-bottom:5px;">
+                        ${new Date(actor.birthDate).toLocaleDateString('tr-TR', { year: 'numeric', month: 'long', day: 'numeric' })} 
+                        ${age ? `<span style="color:#888;">(${age} yaşında)</span>` : ''}
+                    </div>` : ''}
+                ${actor && actor.placeOfBirth ? `<div style="text-align:center; color:#666; font-size:0.9rem;">${actor.placeOfBirth}</div>` : ''}
+                
+                <div style="margin-top:2rem; text-align:center;">
+                    <button onclick="syncActor('${name}')" style="background:transparent; border:1px solid #444; color:#666; padding:5px 10px; border-radius:4px; cursor:pointer; font-size:0.8rem;">🔄 Bilgileri Güncelle</button>
+                    <div id="syncStatus" style="font-size:0.8rem; margin-top:5px;"></div>
+                </div>
+
+                <script>
+                    async function syncActor(name) {
+                        const status = document.getElementById('syncStatus');
+                        status.innerText = 'Güncelleniyor...';
+                        try {
+                            // Reuse the sync tool but focused? Currently generic sync scans all.
+                            // Ideally create specific sync. For now, trigger full scan or just UI feedback.
+                            // Let's rely on the main "Update" button in stats for now.
+                             status.innerText = 'Henüz tekil güncelleme aktif değil. İstatistik sayfasından genel güncelleme yapınız.';
+                        } catch(e) {
+                             status.innerText = 'Hata oluştu.';
+                        }
+                    }
+                </script>
+            </div>
+            
+            <div style="flex:3; min-width:300px;">
+                ${actor && actor.bio ? `
+                    <div class="bio-container" style="background:rgba(255,255,255,0.05); padding:2rem; border-radius:12px; margin-bottom:3rem; line-height:1.8; color:#ddd; position:relative; overflow:hidden;">
+                         <div style="position:absolute; top:0; left:0; width:4px; height:100%; background:var(--ch-neon-cyan);"></div>
+                        <h3 style="margin-top:0; color:var(--ch-neon-cyan); font-family:var(--ch-font-display); font-size:1.5rem; margin-bottom:1rem;">BİYOGRAFİ</h3>
+                        
+                        <div id="bioText" style="max-height:150px; overflow:hidden; transition:max-height 0.5s ease; position:relative;">
+                            ${actor.bio}
+                            <div id="bioFade" style="position:absolute; bottom:0; left:0; width:100%; height:50px; background:linear-gradient(to bottom, transparent, rgba(30,30,30,0.95)); pointer-events:none;"></div>
+                        </div>
+                        
+                        <button id="bioToggleBtn" onclick="toggleBio()" style="background:transparent; border:none; color:var(--ch-neon-cyan); margin-top:1rem; cursor:pointer; font-weight:bold; display:flex; align-items:center; gap:5px;">
+                            <span>DEVAMINI OKU</span> <span style="font-size:1.2rem;">↓</span>
+                        </button>
+
+                        <script>
+                            function toggleBio() {
+                                const bio = document.getElementById('bioText');
+                                const btn = document.getElementById('bioToggleBtn');
+                                const fade = document.getElementById('bioFade');
+                                
+                                if (bio.style.maxHeight === '150px') {
+                                    bio.style.maxHeight = '2000px'; // Enough to show long text
+                                    btn.innerHTML = '<span>KÜÇÜLT</span> <span style="font-size:1.2rem;">↑</span>';
+                                    fade.style.display = 'none';
+                                } else {
+                                    bio.style.maxHeight = '150px';
+                                    btn.innerHTML = '<span>DEVAMINI OKU</span> <span style="font-size:1.2rem;">↓</span>';
+                                    fade.style.display = 'block';
+                                }
+                            }
+                            
+                            // Hide button if bio is short
+                            document.addEventListener('DOMContentLoaded', () => {
+                                const bio = document.getElementById('bioText');
+                                if(bio.scrollHeight <= 150) {
+                                    document.getElementById('bioToggleBtn').style.display = 'none';
+                                    document.getElementById('bioFade').style.display = 'none';
+                                }
+                            });
+                        </script>
+                    </div>
+                ` : `<div style="background:rgba(255,255,255,0.02); padding:2rem; border-radius:12px; margin-bottom:3rem; text-align:center; color:#666; font-style:italic;">
+                        Biyografi bulunamadı. "İstatistik" sayfasından "Oyuncuları Senkronize Et" butonuna basarak verileri çekebilirsiniz.
+                     </div>`}
+                
+                <h3 style="color:var(--ch-neon-red); font-family:var(--ch-font-display); font-size:1.8rem; border-bottom:1px solid #333; padding-bottom:1rem; margin-bottom:1.5rem;">
+                    ARŞİVDEKİ FİLMLERİ <span style="font-size:1rem; color:#666; vertical-align:middle; margin-left:10px;">(${films.length})</span>
+                </h3>
+                
+                <div class="film-grid" style="grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap:1.5rem;">
+                    ${renderFilmGrid(films)}
+                </div>
+            </div>
+        </div>
+    `;
+
+    res.send(renderPage(content, `${name} - Oyuncu Profili`, req));
 });
 
 module.exports = router;

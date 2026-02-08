@@ -5,7 +5,9 @@
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "dev": "nodemon server.js"
+    "dev": "nodemon server.js",
+    "setup": "node setup_db.js",
+    "update": "git pull && npm install && npm run setup"
   },
   "keywords": [
     "raspberry-pi",

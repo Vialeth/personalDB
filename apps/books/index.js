@@ -276,6 +276,95 @@ const renderPage = (content, allBooks = []) => `
         }
         
         window.addEventListener('DOMContentLoaded', toggleStatusFields);
+
+        async function runAutoFetch() {
+            if(!confirm('Bu işlem eksik bilgileri (Kapak, Sayfa, ISBN, Tür) internetten tarayarak dolduracak. Devam edilsin mi?')) return;
+
+            // Find all buttons that trigger this (handle multiple)
+            const btns = document.querySelectorAll('.btn-auto-fetch');
+            const status = document.getElementById('fetch-status-msg'); 
+
+            btns.forEach(b => {
+                b.disabled = true;
+                b.innerText = 'Taranıyor...';
+            });
+            
+            if(status) status.innerText = 'Lütfen bekleyin, kitaplar taranıyor...';
+
+            try {
+                const res = await fetch('/books/api/tools/fetch-missing', { method: 'POST' });
+                const data = await res.json();
+                
+                if(data.success) {
+                    if(status) status.innerText = 'Tamamlandı!';
+                    alert('İşlem Başarılı!\\nTaranan: ' + data.total + '\\nGüncellenen: ' + data.updated);
+                    window.location.reload();
+                } else {
+                    throw new Error(data.error || 'Bilinmeyen hata');
+                }
+            } catch(e) {
+                if(status) status.innerText = 'Hata oluştu.';
+                alert('Hata: ' + e.message);
+            } finally {
+                btns.forEach(b => {
+                    b.disabled = false;
+                    b.innerText = '⚡ Eksik Verileri Tamamla';
+                });
+            }
+        }
+
+        function toggleDelete(btn, id, e) {
+            e.stopPropagation();
+            e.preventDefault();
+            const wrapper = btn.closest('.delete-wrapper');
+            const confirmBtn = wrapper.querySelector('.delete-confirm');
+            
+            if (confirmBtn.style.display === 'none') {
+                btn.style.display = 'none';
+                confirmBtn.style.display = 'inline-block';
+                
+                // Hide after 3 seconds if not clicked
+                setTimeout(() => {
+                   if(document.body.contains(btn)) { // Check if still in DOM
+                       btn.style.display = 'inline-block';
+                       confirmBtn.style.display = 'none';
+                   }
+                }, 3000);
+            }
+        }
+
+        async function confirmDelete(btn, id, e) {
+            e.stopPropagation();
+            e.preventDefault();
+            
+            const card = btn.closest('.library-card');
+            if(!card) return;
+
+            // Optimistic UI Removal
+            card.style.transition = 'opacity 0.3s, transform 0.3s';
+            card.style.opacity = '0';
+            card.style.transform = 'scale(0.9)';
+            
+            try {
+                const res = await fetch(\`/books/delete/\${id}\`, { 
+                    method: 'POST',
+                    headers: { 'Accept': 'application/json' }
+                });
+                
+                if (res.ok) {
+                    setTimeout(() => card.remove(), 300);
+                } else {
+                    // Revert if failed
+                    card.style.opacity = '1';
+                    card.style.transform = 'scale(1)';
+                    alert('Silme başarısız oldu.');
+                }
+            } catch (err) {
+                 card.style.opacity = '1';
+                 card.style.transform = 'scale(1)';
+                 alert('Hata: ' + err.message);
+            }
+        }
     </script>
     <style>
         /* Modal Styles */
@@ -566,6 +655,46 @@ const renderPage = (content, allBooks = []) => `
             background-color: var(--da-accent-orange);
             color: white;
             border-color: var(--da-accent-orange);
+        }
+    <style>
+        /* Genre Tags Input */
+        .genre-input-container {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+            padding: 4px 8px; /* Adjusted to match visual height of text inputs */
+            border: 1px solid var(--da-border);
+            border-radius: 2px; /* Match .filter-input */
+            background: var(--da-bg-espresso); /* Match .filter-input */
+            min-height: 42px;
+            align-items: center;
+            box-sizing: border-box; /* Ensure padding doesn't affect width */
+        }
+        .genre-tag {
+            background: var(--da-accent-orange);
+            color: var(--da-bg-espresso);
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 0.8rem;
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+        .genre-tag .remove {
+            cursor: pointer;
+            font-weight: bold;
+            opacity: 0.7;
+        }
+        .genre-tag .remove:hover { opacity: 1; }
+        .genre-type-input {
+            border: none;
+            background: transparent;
+            color: var(--da-text-cream);
+            flex: 1;
+            min-width: 100px;
+            font-family: inherit;
+            font-size: 0.9rem;
+            outline: none;
         }
     </style>
 </head>
@@ -882,7 +1011,10 @@ function serveApp(req, res, editBookId = null) {
                 <!-- Actions (visible in Edit Mode) -->
                 <div class="card-actions">
                      <a href="/books/edit/${b.id}" class="action-btn edit" title="Düzenle">✎</a>
-                     <button type="button" onclick="openDeleteModal(${b.id}, '${b.title.replace(/'/g, "\\'")}', event)" class="action-btn delete" title="Sil">✕</button>
+                     <div class="delete-wrapper" style="display:inline-block; position:relative;">
+                        <button type="button" onclick="toggleDelete(this, ${b.id}, event)" class="action-btn delete" title="Sil">✕</button>
+                        <button type="button" onclick="confirmDelete(this, ${b.id}, event)" class="action-btn delete-confirm" style="display:none; background:var(--da-accent-orange); color:#fff; border:none; padding:5px 10px; border-radius:4px; font-size:0.8rem; cursor:pointer; margin-left:5px;">Emin misin?</button>
+                     </div>
                 </div>
             </div>
         </div>
@@ -994,13 +1126,17 @@ function serveApp(req, res, editBookId = null) {
         <div id="section-add" class="app-section" style="display:${activeSectionInfo.add}; max-width:600px; margin:0 auto;">
             <div class="section-title">${formTitle}</div>
             
-            <div style="display: flex; gap: 1rem; margin-bottom: 2rem;">
+            <div style="display: flex; gap: 1rem; margin-bottom: 2rem; flex-wrap: wrap;">
                   <button class="btn-da btn-da-primary" onclick="window.location.href='/books?section=add'">
                      Manuel Ekle
                   </button>
                   <button class="btn-da" onclick="document.getElementById('bookSearchModal').showModal()">
                      🔍 İnternetten Ara & Ekle
                   </button>
+                  <button class="btn-da btn-auto-fetch" onclick="runAutoFetch()" style="border-color:var(--da-accent-green); color:var(--da-accent-green);">
+                     ⚡ Eksik Verileri Tamamla
+                  </button>
+                  <span id="fetch-status-msg" style="align-self:center; font-size:0.9rem; color:var(--da-accent-orange);"></span>
             </div>
 
             <!-- Import CSV Section (Collapsed) -->
@@ -1085,8 +1221,81 @@ function serveApp(req, res, editBookId = null) {
                     <input type="number" name="rating" step="0.1" min="0" max="10" class="filter-input" value="${b.rating || ''}">
                 </div>
 
-                <label style="display:block; margin-top:1rem; margin-bottom:0.5rem;">Türler (Virgülle ayırın)</label>
-                <input type="text" name="genres" placeholder="Örn: Bilim Kurgu, Klasik, Roman" class="filter-input" value="${b.genres ? JSON.parse(b.genres).join(', ') : ''}">
+                <label style="display:block; margin-top:1rem; margin-bottom:0.5rem;">Türler (Yazıp Enter'a basın)</label>
+                
+                <div class="genre-input-container" onclick="document.getElementById('genre-input').focus()">
+                    <div id="genre-tags" style="display:contents;"></div>
+                    <input type="text" id="genre-input" class="genre-type-input" placeholder="Tür ekle..." list="genre-list" autocomplete="off">
+                </div>
+                <input type="hidden" name="genres" id="genres-hidden" value='${b.genres || "[]"}'>
+
+                <datalist id="genre-list">
+                    ${data.allGenres.map(g => `<option value="${g}">`).join('')}
+                </datalist>
+
+                <script>
+                    (function() {
+                        const input = document.getElementById('genre-input');
+                        const hiddenInput = document.getElementById('genres-hidden');
+                        const tagsContainer = document.getElementById('genre-tags');
+                        
+                        let currentGenres = [];
+                        try {
+                            const raw = hiddenInput.value;
+                            currentGenres = raw ? JSON.parse(raw) : [];
+                        } catch(e) { currentGenres = []; }
+
+                        function renderTags() {
+                            tagsContainer.innerHTML = currentGenres.map(g => \`
+                                <div class="genre-tag">
+                                    \${g}
+                                    <span class="remove" onclick="removeBookGenre('\${g}')">&times;</span>
+                                </div>
+                            \`).join('');
+                            hiddenInput.value = JSON.stringify(currentGenres);
+                        }
+
+                        window.removeBookGenre = function(g) {
+                            currentGenres = currentGenres.filter(item => item !== g);
+                            renderTags();
+                            // Keep focus on input after removal for better UX
+                            // input.focus(); 
+                        };
+
+                        input.addEventListener('keydown', function(e) {
+                            if (e.key === 'Enter' || e.key === ',') {
+                                e.preventDefault();
+                                const val = this.value.trim();
+                                if (val && !currentGenres.includes(val)) {
+                                    currentGenres.push(val);
+                                    renderTags();
+                                }
+                                this.value = '';
+                            }
+                            if (e.key === 'Backspace' && this.value === '' && currentGenres.length > 0) {
+                                currentGenres.pop();
+                                renderTags();
+                            }
+                        });
+                        
+                        input.addEventListener('input', function(e) {
+                            const val = this.value;
+                            const options = Array.from(document.getElementById('genre-list').options).map(o => o.value);
+                            if (options.includes(val) && !currentGenres.includes(val)) {
+                                currentGenres.push(val);
+                                renderTags();
+                                this.value = '';
+                            }
+                        });
+
+                        window.addEventListener('update-genres', function(e) {
+                            currentGenres = e.detail;
+                            renderTags();
+                        });
+
+                        renderTags();
+                    })();
+                </script>
 
                 <button type="submit" class="btn-da btn-da-primary" style="width:100%; margin-top:1rem; font-size:1.1rem; padding:1rem;">${formBtnText}</button>
             </form>
@@ -1095,13 +1304,16 @@ function serveApp(req, res, editBookId = null) {
         <!-- Google Books Search Modal -->
         <dialog id="bookSearchModal" style="width:90%; max-width:800px; background:var(--da-bg-card); border:1px solid var(--da-accent-orange); color:var(--da-text-cream); padding:0; border-radius:8px; backdrop-filter:blur(10px); height:80vh;">
              <div style="padding:1rem; border-bottom:1px solid rgba(255,255,255,0.1); display:flex; justify-content:space-between; align-items:center;">
-                <h3 style="margin:0; font-family:var(--da-font-display); color:var(--da-accent-orange);">Kitap Arama (Open Library)</h3>
+                <h3 style="margin:0; font-family:var(--da-font-display); color:var(--da-accent-orange);">Kitap Arama (Google Books)</h3>
                 <button type="button" onclick="document.getElementById('bookSearchModal').close()" style="background:none; border:none; color:#fff; font-size:1.5rem; cursor:pointer;">&times;</button>
             </div>
             <div style="padding:1rem;">
-                <div style="display:flex; gap:10px; margin-bottom:1rem;">
-                    <input type="text" id="apiSearchInput" placeholder="Kitap veya yazar ara..." class="filter-input" style="flex:1;" onkeydown="if(event.key === 'Enter') searchBooksApi()">
-                    <button type="button" onclick="searchBooksApi()" class="btn-da btn-da-primary">ARA</button>
+                <div style="display:flex; flex-direction:column; gap:10px; margin-bottom:1rem;">
+                    <input type="text" id="apiSearchInput" placeholder="Kitap Adı..." class="filter-input" onkeydown="if(event.key === 'Enter') searchBooksApi()">
+                    <div style="display:flex; gap:10px;">
+                        <input type="text" id="apiSearchAuthor" placeholder="Yazar (Opsiyonel)" class="filter-input" style="flex:1;" onkeydown="if(event.key === 'Enter') searchBooksApi()">
+                        <button type="button" onclick="searchBooksApi()" class="btn-da btn-da-primary">ARA</button>
+                    </div>
                 </div>
                 <div id="apiLoading" style="display:none; text-align:center; padding:2rem; color:#888;">Aranıyor...</div>
                 <div id="apiResults" style="display:grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap:1rem; overflow-y:auto; max-height:calc(80vh - 150px); padding-right:0.5rem;"></div>
@@ -1120,33 +1332,47 @@ function serveApp(req, res, editBookId = null) {
 
             async function searchBooksApi() {
                 const query = document.getElementById('apiSearchInput').value;
-                if(!query) return;
+                const author = document.getElementById('apiSearchAuthor').value;
+                
+                if(!query && !author) return;
 
                 document.getElementById('apiLoading').style.display = 'block';
                 document.getElementById('apiResults').innerHTML = '';
 
                 try {
-                    // Using Open Library API to avoid Google's 429 Rate Limits
-                    const res = await fetch(\`https://openlibrary.org/search.json?q=\${encodeURIComponent(query)}&limit=20\`);
+                    // Use local proxy (Google Books)
+                    let url = \`/books/api/search?q=\${encodeURIComponent(query)}\`;
+                    if (author) url += \`&author=\${encodeURIComponent(author)}\`;
+
+                    const res = await fetch(url);
                     if (!res.ok) throw new Error(\`HTTP Error: \${res.status} \${res.statusText}\`);
+                    // Google Books API output structure from our proxy
                     const data = await res.json();
                     
                     document.getElementById('apiLoading').style.display = 'none';
 
-                    if(data.docs && data.docs.length > 0) {
-                        document.getElementById('apiResults').innerHTML = data.docs.map(book => {
-                            // Extract & Normalize Data from Open Library
+                    if(data.items && data.items.length > 0) {
+                        document.getElementById('apiResults').innerHTML = data.items.map(book => {
+                            // Normalize Data
                             const title = book.title;
-                            const author = book.author_name ? book.author_name[0] : 'Unknown';
-                            const coverUrl = book.cover_i ? \`https://covers.openlibrary.org/b/id/\${book.cover_i}-M.jpg\` : '';
-                            const pageCount = book.number_of_pages_median || book.number_of_pages || 0;
-                            const genres = book.subject ? book.subject.slice(0, 5) : []; // Take top 5 subjects
-                            const isbn = book.isbn ? book.isbn[0] : '';
+                            const authors = book.authors || ['Bilinmiyor'];
+                            const authorDisplay = authors.join(', ');
+                            const coverUrl = book.imageUrl || '';
+                            const pageCount = book.pageCount || 0;
+                            // Google Books via proxy returns 'genres' (mapped from categories) or 'categories' depending on proxy version.
+                            // Let's check proxy implementation. It returns 'category' (singular) for first category?
+                            // Actually best to handle whatever array or string we get.
+                            let genres = [];
+                            if (book.genres) genres = book.genres;
+                            else if (book.categories) genres = book.categories;
+                            else if (book.category) genres = [book.category];
+                            
+                            const isbn = book.isbn || '';
                             
                             // Safe assignment for onclick
                             const bookData = {
                                 title: title,
-                                authors: book.author_name || [],
+                                authors: authors,
                                 pageCount: pageCount,
                                 categories: genres,
                                 isbn: isbn,
@@ -1161,7 +1387,8 @@ function serveApp(req, res, editBookId = null) {
                                     \${coverUrl ? '<img src="' + coverUrl + '" style="max-height:100%; max-width:100%;">' : '<span style="color:#555; font-size:0.8rem;">No Cover</span>'}
                                 </div>
                                 <div style="font-weight:bold; font-size:0.85rem; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">\${title}</div>
-                                <div style="font-size:0.75rem; color:#888;">\${author}</div>
+                                <div style="font-size:0.75rem; color:#888;">\${authorDisplay}</div>
+                                \${genres.length > 0 ? '<div style="font-size:0.65rem; color:var(--da-accent-orange); margin-top:2px;">' + genres.slice(0, 2).join(', ') + '</div>' : ''}
                             </div>
                             \`;
                         }).join('');
@@ -1186,7 +1413,11 @@ function selectBook(book) {
             document.querySelector('input[name="pageCount"]').value = book.pageCount;
         }
         if (book.categories && book.categories.length > 0) {
-            document.querySelector('input[name="genres"]').value = book.categories.join(', ');
+            // Dispatch event to update tags
+            window.dispatchEvent(new CustomEvent('update-genres', { detail: book.categories }));
+        } else {
+             // If no categories, maybe try to clear or just warn? For now let's not clear existing manual tags.
+             // console.log('No categories found for this book');
         }
         if (book.isbn) {
             document.querySelector('input[name="isbn"]').value = book.isbn;
@@ -1225,12 +1456,94 @@ router.get('/edit/:id', (req, res) => {
 
 
 // Google Books API Helper
+
+// Central Genre Map
+const GENRE_MAP = {
+    'Fiction': ['Kurgu', 'Roman'],
+    'Novel': ['Roman'],
+    'Science Fiction': ['Bilim Kurgu'],
+    'Sci-Fi': ['Bilim Kurgu'],
+    'Fantasy': ['Fantastik'],
+    'History': ['Tarih'],
+    'Biography': ['Biyografi'],
+    'Autobiography': ['Otobiyografi'],
+    'Philosophy': ['Felsefe'],
+    'Psychology': ['Psikoloji'],
+    'Science': ['Bilim'],
+    'Social Science': ['Sosyal Bilimler'],
+    'Business': ['İş Dünyası'],
+    'Economics': ['Ekonomi'],
+    'Travel': ['Seyahat'],
+    'Cooking': ['Yemek'],
+    'Art': ['Sanat'],
+    'Music': ['Müzik'],
+    'Poetry': ['Şiir'],
+    'Drama': ['Tiyatro'],
+    'Comics': ['Çizgi Roman'],
+    'Graphic Novels': ['Çizgi Roman'],
+    'Young Adult': ['Genç Yetişkin'],
+    'Children': ['Çocuk'],
+    'Thriller': ['Gerilim'],
+    'Mystery': ['Gizem'],
+    'Horror': ['Korku'],
+    'Romance': ['Romantik'],
+    'Self-Help': ['Kişisel Gelişim'],
+    'Religion': ['Din'],
+    'Education': ['Eğitim'],
+    'Technology': ['Teknoloji']
+};
+
+function translateGenres(rawGenres) {
+    if (!rawGenres || !Array.isArray(rawGenres)) return [];
+
+    let mappedGenres = [];
+    rawGenres.forEach(g => {
+        let found = false;
+        for (const [key, values] of Object.entries(GENRE_MAP)) {
+            if (g.includes(key)) {
+                mappedGenres.push(...values);
+                found = true;
+                break;
+            }
+        }
+        if (!found) mappedGenres.push(g);
+    });
+
+    return [...new Set(mappedGenres)];
+}
+
+function normalizeGoogleBook(item) {
+    const info = item.volumeInfo;
+
+    // Extract Raw Genres
+    let rawGenres = [];
+    if (info.categories) rawGenres = info.categories;
+    else if (info.category) rawGenres = [info.category]; // Some proxies return singular
+
+    // Translate
+    const translatedGenres = translateGenres(rawGenres);
+
+    return {
+        id: item.id,
+        title: info.title,
+        authors: info.authors || [],
+        authorDisplay: (info.authors || ['Bilinmiyor']).join(', '),
+        publishedDate: info.publishedDate,
+        description: info.description,
+        pageCount: info.pageCount || 0,
+        genres: translatedGenres,
+        imageUrl: (info.imageLinks && info.imageLinks.thumbnail) ? info.imageLinks.thumbnail.replace('http:', 'https:') : null,
+        isbn: (info.industryIdentifiers && info.industryIdentifiers.find(i => i.type === 'ISBN_13')) ? info.industryIdentifiers.find(i => i.type === 'ISBN_13').identifier : ((info.industryIdentifiers && info.industryIdentifiers[0]) ? info.industryIdentifiers[0].identifier : '')
+    };
+}
+
 async function fetchBookMetadata(title, author) {
     return new Promise((resolve) => {
         if (!title) return resolve(null);
 
         const query = `intitle:${encodeURIComponent(title)}${author ? `+inauthor:${encodeURIComponent(author)}` : ''} `;
-        const url = `https://www.googleapis.com/books/v1/volumes?q=${query}&maxResults=1&langRestrict=tr`;
+        // Remove langRestrict=tr to get better metadata coverage
+        const url = `https://www.googleapis.com/books/v1/volumes?q=${query}&maxResults=1`;
 
         https.get(url, (res) => {
             let data = '';
@@ -1238,15 +1551,9 @@ async function fetchBookMetadata(title, author) {
             res.on('end', () => {
                 try {
                     const json = JSON.parse(data);
-                    if (json.totalItems > 0 && json.items && json.items[0].volumeInfo) {
-                        const info = json.items[0].volumeInfo;
-                        resolve({
-                            genres: info.categories || [],
-                            pageCount: info.pageCount || null,
-                            imageUrl: (info.imageLinks && info.imageLinks.thumbnail) ? info.imageLinks.thumbnail.replace('http:', 'https:') : null,
-                            isbn: (info.industryIdentifiers && info.industryIdentifiers.find(i => i.type === 'ISBN_13')) ? info.industryIdentifiers.find(i => i.type === 'ISBN_13').identifier : null,
-                            description: info.description || null
-                        });
+                    if (json.totalItems > 0 && json.items) {
+                        const book = normalizeGoogleBook(json.items[0]);
+                        resolve(book);
                     } else {
                         resolve(null);
                     }
@@ -1264,12 +1571,23 @@ async function fetchBookMetadata(title, author) {
 
 // GET /api/search - Proxy to Google Books
 router.get('/api/search', (req, res) => {
-    const q = req.query.q;
-    if (!q) return res.json({ items: [] });
+    const q = req.query.q || '';
+    const author = req.query.author || '';
 
-    console.log(`[Search] Query: ${q}`);
-    // Removed langRestrict=tr to allow all books (e.g. English)
-    const url = `https://www.googleapis.com/books/v1/volumes?q=${encodeURIComponent(q)}&maxResults=20`;
+    if (!q && !author) return res.json({ items: [] });
+
+    console.log(`[Search] Query: "${q}", Author: "${author}"`);
+
+    // Construct Google Books Query
+    let apiQuery = '';
+    if (author) {
+        if (q) apiQuery += `intitle:${q}`;
+        apiQuery += `+inauthor:${author}`;
+    } else {
+        apiQuery = q;
+    }
+
+    const url = `https://www.googleapis.com/books/v1/volumes?q=${encodeURIComponent(apiQuery)}&maxResults=20`;
     console.log(`[Search] URL: ${url}`);
 
     https.get(url, (apiRes) => {
@@ -1281,20 +1599,7 @@ router.get('/api/search', (req, res) => {
                 const json = JSON.parse(data);
                 console.log(`[Search] Items found: ${json.items ? json.items.length : 0}`);
 
-                const results = (json.items || []).map(item => {
-                    const info = item.volumeInfo;
-                    return {
-                        id: item.id,
-                        title: info.title,
-                        authors: info.authors || [],
-                        publishedDate: info.publishedDate,
-                        description: info.description,
-                        pageCount: info.pageCount,
-                        categories: info.categories || [],
-                        imageLinks: info.imageLinks,
-                        industryIdentifiers: info.industryIdentifiers
-                    };
-                });
+                const results = (json.items || []).map(item => normalizeGoogleBook(item));
                 res.json({ items: results });
             } catch (e) {
                 console.error('[Search] Parse Error:', e);
@@ -1329,7 +1634,23 @@ router.post('/add', upload.single('imageFile'), async (req, res) => {
         } catch (e) { console.error('Metadata fetch failed:', e); }
     }
 
-    const genreArray = genres ? genres.split(',').map(g => g.trim()).filter(g => g) : [];
+    // Parse Genres safely
+    let genreArray = [];
+    if (genres) {
+        try {
+            // Try to parse as JSON first (e.g. ["Sci-Fi", "Drama"])
+            const parsed = JSON.parse(genres);
+            if (Array.isArray(parsed)) {
+                genreArray = parsed;
+            } else {
+                // If not array, treat as split string
+                genreArray = genres.split(',').map(g => g.trim()).filter(g => g);
+            }
+        } catch (e) {
+            // Not JSON, treat as split string
+            genreArray = genres.split(',').map(g => g.trim()).filter(g => g);
+        }
+    }
     const insert = db.prepare(`
         INSERT INTO books (title, author, pageCount, isbn, genres, startDate, endDate, rating, status, imageUrl)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -1365,7 +1686,21 @@ router.post('/edit/:id', upload.single('imageFile'), async (req, res) => {
         } catch (e) { console.error('Metadata fetch failed:', e); }
     }
 
-    const genreArray = genres ? genres.split(',').map(g => g.trim()).filter(g => g) : [];
+    // Parse Genres safely
+    let genreArray = [];
+    if (genres) {
+        try {
+            // Try to parse as JSON first (e.g. ["Sci-Fi", "Drama"])
+            const parsed = JSON.parse(genres);
+            if (Array.isArray(parsed)) {
+                genreArray = parsed;
+            } else {
+                genreArray = genres.split(',').map(g => g.trim()).filter(g => g);
+            }
+        } catch (e) {
+            genreArray = genres.split(',').map(g => g.trim()).filter(g => g);
+        }
+    }
 
     if (endDate === '') endDate = null;
     if (rating === '') rating = null;
@@ -1412,7 +1747,28 @@ router.post('/drop/:id', (req, res) => {
 });
 
 router.post('/delete/:id', (req, res) => {
-    db.prepare('DELETE FROM books WHERE id = ?').run(req.params.id);
+    const id = req.params.id;
+    try {
+        db.transaction(() => {
+            // Delete dependent rows first (if any)
+            try { db.prepare('DELETE FROM reading_sessions WHERE book_id = ?').run(id); } catch (e) { }
+            db.prepare('DELETE FROM books WHERE id = ?').run(id);
+        })();
+    } catch (e) {
+        console.error('Delete error:', e);
+        if (req.headers.accept && req.headers.accept.includes('application/json')) {
+            return res.status(500).json({ success: false, error: e.message });
+        }
+        return res.redirect('/books'); // Or show error page
+    }
+
+    // Check if JSON requested (AJAX)
+
+    // Check if JSON requested (AJAX)
+    if (req.headers.accept && req.headers.accept.includes('application/json')) {
+        return res.json({ success: true });
+    }
+
     res.redirect('/books');
 });
 
@@ -1518,6 +1874,71 @@ router.post('/import', upload.single('csvFile'), (req, res) => {
         });
 });
 
+// POST /api/tools/fetch-missing - Auto Fetch Tool for Books
+router.post('/api/tools/fetch-missing', async (req, res) => {
+    try {
+        const books = db.prepare("SELECT * FROM books").all();
+        let updateCount = 0;
+        let visitedCount = 0;
+
+        for (const book of books) {
+            // Only try if we have a title
+            if (!book.title) continue;
+
+            // Check if anything is missing (Optimization: Don't call API if full)
+            if (book.pageCount && book.isbn && book.imageUrl && book.genres && book.genres !== '[]') {
+                continue;
+            }
+
+            visitedCount++;
+            const meta = await fetchBookMetadata(book.title, book.author);
+
+            if (meta) {
+                let shouldUpdate = false;
+                let newPageCount = book.pageCount;
+                let newIsbn = book.isbn;
+                let newImageUrl = book.imageUrl;
+                let newGenres = book.genres;
+
+                // 1. Page Count
+                if (!book.pageCount && meta.pageCount) {
+                    newPageCount = meta.pageCount;
+                    shouldUpdate = true;
+                }
+
+                // 2. ISBN
+                if (!book.isbn && meta.isbn) {
+                    newIsbn = meta.isbn;
+                    shouldUpdate = true;
+                }
+
+                // 3. Image
+                if (!book.imageUrl && meta.imageUrl) {
+                    newImageUrl = meta.imageUrl;
+                    shouldUpdate = true;
+                }
+
+                // 4. Genres (Merge if empty)
+                if ((!book.genres || book.genres === '[]') && meta.genres.length > 0) {
+                    newGenres = JSON.stringify(meta.genres);
+                    shouldUpdate = true;
+                }
+
+                if (shouldUpdate) {
+                    db.prepare("UPDATE books SET pageCount = ?, isbn = ?, imageUrl = ?, genres = ? WHERE id = ?")
+                        .run(newPageCount, newIsbn, newImageUrl, newGenres, book.id);
+                    updateCount++;
+                }
+            }
+        }
+
+        res.json({ success: true, total: visitedCount, updated: updateCount });
+    } catch (e) {
+        console.error('Auto-Fetch Error:', e);
+        res.status(500).json({ error: e.message });
+    }
+});
+
 // POST /progress/:id - Log Reading Session & Update Page
 router.post('/progress/:id', (req, res) => {
     const bookId = req.params.id;
@@ -1597,6 +2018,46 @@ router.get('/stats', (req, res) => {
                     <div class="stat-value" style="color:var(--da-accent-orange);">${totalRead}</div>
                     <div class="stat-label">Toplam Okunan Sayfa</div>
                 </div>
+
+                 <!-- TOOLS SECTION -->
+                 <div class="stat-item" style="border-left:1px solid rgba(255,255,255,0.1); padding-left:1rem;">
+                     <div class="stat-label" style="margin-bottom:0.5rem; color:var(--da-accent-green);">ARAÇLAR</div>
+                     <button onclick="runAutoFetch()" class="btn-da" style="font-size:0.8rem; height:30px; padding:0 1rem;">Eksik Verileri Tamamla</button>
+                     <div id="fetch-status" style="font-size:0.7rem; margin-top:5px; color:#aaa;"></div>
+                 </div>
+            </div>
+
+            <script>
+                async function runAutoFetch() {
+                    const btn = document.querySelector('button[onclick="runAutoFetch()"]');
+                    const status = document.getElementById('fetch-status');
+                    
+                    if(!confirm('Bu işlem eksik bilgileri (Kapak, Sayfa, ISBN, Tür) internetten tarayarak dolduracak. Devam edilsin mi?')) return;
+
+                    btn.disabled = true;
+                    btn.innerText = 'Taranıyor...';
+                    status.innerText = 'Lütfen bekleyin, kitaplar taranıyor...';
+
+                    try {
+                        const res = await fetch('/books/api/tools/fetch-missing', { method: 'POST' });
+                        const data = await res.json();
+                        
+                        if(data.success) {
+                            status.innerText = 'Tamamlandı!';
+                            alert('İşlem Başarılı!\\nTaranan: ' + data.total + '\\nGüncellenen: ' + data.updated);
+                            location.reload();
+                        } else {
+                            throw new Error(data.error || 'Bilinmeyen hata');
+                        }
+                    } catch(e) {
+                        status.innerText = 'Hata oluştu.';
+                        alert('Hata: ' + e.message);
+                    } finally {
+                        btn.disabled = false;
+                        btn.innerText = 'Eksik Verileri Tamamla';
+                    }
+                }
+            </script>
                 <div class="stat-item">
                     <div class="stat-value" style="color:var(--da-text-cream);">${thisYearRead}</div>
                     <div class="stat-label">Bu Yıl (${currentYear})</div>

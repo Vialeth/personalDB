@@ -31,14 +31,29 @@ try {
 
     if (!columnNames.includes('genres')) filmsDb.exec('ALTER TABLE films ADD COLUMN genres TEXT');
     if (!columnNames.includes('watchDate')) filmsDb.exec('ALTER TABLE films ADD COLUMN watchDate TEXT');
+    if (!columnNames.includes('actors')) filmsDb.exec('ALTER TABLE films ADD COLUMN actors TEXT');
     if (!columnNames.includes('isCinema')) filmsDb.exec('ALTER TABLE films ADD COLUMN isCinema INTEGER DEFAULT 0');
     if (!columnNames.includes('isHallOfFame')) filmsDb.exec('ALTER TABLE films ADD COLUMN isHallOfFame INTEGER DEFAULT 0');
     if (!columnNames.includes('status')) filmsDb.exec("ALTER TABLE films ADD COLUMN status TEXT DEFAULT 'watched'");
+    if (!columnNames.includes('title_tr')) filmsDb.exec("ALTER TABLE films ADD COLUMN title_tr TEXT");
 } catch (e) {
     console.error('Film migration error:', e);
 }
 
-console.log('Films database initialized');
+// Create Actors Table
+filmsDb.exec(`
+    CREATE TABLE IF NOT EXISTS actors (
+        name TEXT PRIMARY KEY,
+        imageUrl TEXT,
+        bio TEXT,
+        birthDate TEXT,
+        placeOfBirth TEXT,
+        tmdbId INTEGER,
+        lastUpdated TEXT
+    )
+`);
+
+console.log('Films database initialized (with Actors & Dual Titles)');
 
 // Books Database - NEW SCHEMA
 const booksDbPath = path.join(dbDir, 'books.db');

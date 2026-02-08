@@ -1203,13 +1203,18 @@ router.post('/api/tools/fetch-missing', async (req, res) => {
             if (film.imageUrl && film.imageUrl.trim() !== '') continue;
 
             // 1. Search Strategy
-            // A. Strict Search (Title + Year)
-            let candidates = await searchTMDB(film.title, film.year);
+            // FIX: User imports 'Watch Year' as 'Year'. 
+            // Searching with year=2024 fails for old movies.
+            // Always search by Title ONLY to get the best candidates.
+            // Our Selection Logic (Director, Matches) will filter out the noise.
 
-            // B. Relaxed Search (Title only) if no results
-            if (candidates.length === 0) {
-                candidates = await searchTMDB(film.title);
-            }
+            // A. Relaxed Search (Title only)
+            let candidates = await searchTMDB(film.title);
+
+            /* Old Strict Search Logic - Removed to fix Watch Year issue
+            let candidates = await searchTMDB(film.title, film.year);
+            if (candidates.length === 0) candidates = await searchTMDB(film.title);
+            */
 
             if (candidates.length === 0) {
                 errors.push(`${film.title} (${film.year}): Bulunamadı`);

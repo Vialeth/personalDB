@@ -1686,7 +1686,7 @@ router.post('/import', upload.single('csvFile'), (req, res) => {
     // But for simplicity in this "Personal DB" context, reading all is fine.
 
     fs.createReadStream(req.file.path)
-        .pipe(csv())
+        .pipe(csv({ mapHeaders: ({ header }) => header.trim().replace(/^\uFEFF/, '') }))
         .on('headers', (headerList) => {
             headerList.forEach(h => headers.push(h));
         })
@@ -1740,9 +1740,28 @@ router.post('/import', upload.single('csvFile'), (req, res) => {
                 return '';
             };
 
+            // Custom Format Detection (Friend's Format)
+            const isFriendFormat = headers.includes('Film Adı') && headers.includes('Sinemada İzlendi');
+
             const mappingForm = `
                 <div class="form-container" style="max-width:800px; margin:2rem auto;">
                     <h2 style="font-family:var(--ch-font-display); color:var(--ch-neon-gold);">${t('column_mapping', locale)}</h2>
+                    
+                    ${isFriendFormat ? `
+                        <div style="background:rgba(0,255,0,0.1); border:1px solid var(--ch-neon-green); padding:1rem; margin-bottom:2rem; border-radius:4px;">
+                            <h3 style="color:var(--ch-neon-green); margin-top:0;">🤖 ÖZEL FORMAT TESPİT EDİLDİ</h3>
+                            <p style="color:#ddd;">Arkadaş formatı algılandı. Otomatik ayrıştırma ve içe aktarma yapılabilir.</p>
+                            <form action="/films/import/process" method="POST">
+                                <input type="hidden" name="filename" value="${filename}">
+                                <input type="hidden" name="friend_mode" value="1">
+                                <button type="submit" class="btn-cinema" style="width:100%; background:var(--ch-neon-green); color:#000; font-weight:bold;">
+                                    🚀 OTOMATİK İÇE AKTAR (FRIEND MODE)
+                                </button>
+                            </form>
+                        </div>
+                        <div style="text-align:center; margin-bottom:2rem; color:#666;">--- VEYA MANUEL EŞLEŞTİRME ---</div>
+                    ` : ''}
+
                     <p style="color:#aaa; margin-bottom:2rem;">${t('common_mapping_instr', locale)}</p>
                     
                     <form action="/films/import/process" method="POST">
@@ -1787,82 +1806,167 @@ router.post('/import/process', (req, res) => {
     if (!fs.existsSync(filePath)) return res.send('Dosya bulunamadı / zaman aşımı.');
 
     const mapping = {};
-    // Extract mapping from body (map_title -> title)
-    Object.keys(req.body).forEach(k => {
-        if (k.startsWith('map_') && req.body[k]) {
-            mapping[k.replace('map_', '')] = req.body[k];
-        }
-    });
+    const friendMode = req.body.friend_mode === '1';
+
+    if (!friendMode) {
+        // Extract mapping from body (map_title -> title)
+        Object.keys(req.body).forEach(k => {
+            if (k.startsWith('map_') && req.body[k]) {
+                mapping[k.replace('map_', '')] = req.body[k];
+            }
+        });
+    }
 
     const results = [];
     const csv = require('csv-parser');
 
+    // Helper: Parse Friend Format
+    const parseFriendRow = (row) => {
+        const rawTitle = row['Film Adı'] || '';
+        let title = rawTitle;
+        let title_tr = '';
+        let url = '';
+
+        // Parse: "URL / Title TR"
+        const parts = rawTitle.split(' / ');
+        if (parts.length > 1) {
+            url = parts[0].trim();
+            title_tr = parts[1].trim();
+        } else {
+            url = rawTitle.trim();
+        }
+
+        // Extract Original Title from URL slug if possible
+        try {
+            if (url.includes('http')) {
+                const urlObj = new URL(url);
+                const pathParts = urlObj.pathname.split('/').filter(p => p);
+                // usually last part is slug, or second to last if ends with slash
+                let slug = pathParts[pathParts.length - 1];
+                if (slug) {
+                    // Remove "tekrar-izlendi" notes if attached to slug loosely (though usually in parens)
+                    title = slug.replace(/-/g, ' ')
+                        .replace(/\b\w/g, c => c.toUpperCase()); // Capitalize
+                }
+            } else {
+                title = rawTitle;
+            }
+        } catch (e) { title = rawTitle; }
+
+        // Clean "(Tekrar İzlendi)" from title if present
+        if (title.includes('(')) title = title.split('(')[0].trim();
+        if (title_tr.includes('(')) title_tr = title_tr.split('(')[0].trim();
+
+        // Date: DD/MM/YYYY -> YYYY-MM-DD
+        let dateStr = row['İzleme Tarihi'];
+        let watchDate = '';
+        if (dateStr) {
+            const [d, m, y] = dateStr.split('/');
+            if (d && m && y) watchDate = `${y}-${m}-${d}`;
+        }
+
+        // Rating: "7/10" -> 7
+        let rating = row['Puan'] ? parseFloat(row['Puan'].split('/')[0]) : null;
+
+        // Genres
+        let genres = [];
+        if (row['Tür']) {
+            genres = row['Tür'].split(',').map(s => s.trim());
+        }
+
+        return {
+            title: title || 'Bilinmeyen Film',
+            title_tr: title_tr,
+            director: row['Yönetmen'],
+            year: dateStr ? dateStr.split('/')[2] : '',
+            rating: rating,
+            watchDate: watchDate,
+            isCinema: !!row['Sinemada İzlendi'],
+            genres: JSON.stringify(genres),
+            imageUrl: '',
+            description: '',
+            userNotes: rawTitle.includes('Tekrar') ? 'Tekrar İzlendi' : '',
+            status: 'watched', // Assume watched since there is a date
+            isHallOfFame: false
+        };
+    };
+
+    // Helper: Parse Manual Format
+    const parseManualRow = (row, mapping) => {
+        const getVal = (key) => {
+            const csvHeader = mapping[key];
+            if (!csvHeader) return null;
+            return row[csvHeader] ? row[csvHeader].trim() : null;
+        };
+
+        const title = getVal('title') || 'Bilinmeyen Film';
+        const title_tr = getVal('title_tr');
+        const director = getVal('director');
+        const year = getVal('year');
+        const description = getVal('description');
+        const userNotes = getVal('userNotes');
+
+        // Rating Parsing
+        let rating = null;
+        const rStr = getVal('rating');
+        if (rStr) {
+            // "8.5", "8,5", "8/10"
+            let clean = rStr.split('/')[0].replace(',', '.');
+            rating = parseFloat(clean);
+            if (isNaN(rating)) rating = null;
+        }
+
+        // Date Parsing
+        let watchDate = getVal('watchDate');
+        if (watchDate) {
+            // Attempt to parse: DD/MM/YYYY, YYYY-MM-DD
+            if (watchDate.match(/^\d{1,2}[\/\-\.]\d{1,2}[\/\-\.]\d{4}$/)) {
+                const parts = watchDate.split(/[\/\-\.]/);
+                // Assume DD-MM-YYYY
+                watchDate = `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
+            }
+        }
+
+        // Cinema Boolean
+        let isCinema = 0;
+        const cVal = getVal('isCinema');
+        if (cVal && (cVal.toLowerCase() === 'yes' || cVal.toLowerCase() === 'evet' || cVal === '1' || cVal.toLowerCase() === 'true')) {
+            isCinema = 1;
+        }
+
+        // Genres
+        let genres = '[]';
+        const gVal = getVal('genres');
+        if (gVal) {
+            const list = gVal.split(/[\|,]/).map(s => s.trim()).filter(s => s);
+            genres = JSON.stringify(list);
+        }
+
+        return { title, title_tr, director, year, rating, description, userNotes, genres, watchDate, isCinema, status: 'watched', isHallOfFame: 0 };
+    };
+
     fs.createReadStream(filePath)
-        .pipe(csv())
+        .pipe(csv({ mapHeaders: ({ header }) => header.trim().replace(/^\uFEFF/, '') }))
         .on('data', (data) => results.push(data))
         .on('end', () => {
             const insert = db.prepare(`
                 INSERT INTO films(title, title_tr, director, year, rating, description, userNotes, genres, watchDate, isCinema, isHallOfFame, status)
-                VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 'watched')
+                VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             `);
 
             const insertMany = db.transaction((rows) => {
                 for (const row of rows) {
-                    // Helper to get mapped value
-                    const getVal = (key) => {
-                        const csvHeader = mapping[key];
-                        if (!csvHeader) return null;
-                        return row[csvHeader] ? row[csvHeader].trim() : null;
-                    };
+                    let entry = friendMode ? parseFriendRow(row) : parseManualRow(row, mapping);
 
-                    const title = getVal('title') || 'Bilinmeyen Film';
-                    const title_tr = getVal('title_tr');
-                    const director = getVal('director');
-                    const year = getVal('year');
-                    const description = getVal('description');
-                    const userNotes = getVal('userNotes');
+                    // Ensure defaults/types
+                    if (entry.isCinema === true) entry.isCinema = 1;
+                    if (entry.isCinema === false) entry.isCinema = 0;
+                    if (!entry.status) entry.status = 'watched';
+                    if (!entry.isHallOfFame) entry.isHallOfFame = 0;
 
-                    // Rating Parsing
-                    let rating = null;
-                    const rStr = getVal('rating');
-                    if (rStr) {
-                        // "8.5", "8,5", "8/10"
-                        let clean = rStr.split('/')[0].replace(',', '.');
-                        rating = parseFloat(clean);
-                        if (isNaN(rating)) rating = null;
-                    }
-
-                    // Date Parsing
-                    let watchDate = getVal('watchDate');
-                    if (watchDate) {
-                        // Attempt to parse: DD/MM/YYYY, YYYY-MM-DD
-                        // If it matches DD/MM/YYYY
-                        if (watchDate.match(/^\d{1,2}[\/\-\.]\d{1,2}[\/\-\.]\d{4}$/)) {
-                            const parts = watchDate.split(/[\/\-\.]/);
-                            // Assume DD-MM-YYYY
-                            watchDate = `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
-                        }
-                    }
-
-                    // Cinema Boolean
-                    let isCinema = 0;
-                    const cVal = getVal('isCinema');
-                    if (cVal && (cVal.toLowerCase() === 'yes' || cVal.toLowerCase() === 'evet' || cVal === '1' || cVal.toLowerCase() === 'true')) {
-                        isCinema = 1;
-                    }
-
-                    // Genres (Comma separated)
-                    let genres = '[]';
-                    const gVal = getVal('genres');
-                    if (gVal) {
-                        const list = gVal.split(/[\|,]/).map(s => s.trim()).filter(s => s);
-                        genres = JSON.stringify(list);
-                    }
-
-                    insert.run(title, title_tr, director, year, rating, description, userNotes, genres, watchDate, isCinema);
+                    insert.run(entry.title, entry.title_tr, entry.director, entry.year, entry.rating, entry.description, entry.userNotes, entry.genres, entry.watchDate, entry.isCinema, entry.isHallOfFame, entry.status);
                 }
             });
-
             try {
                 insertMany(results);
                 // Clean up file

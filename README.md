@@ -2,37 +2,21 @@
 
 > Developed with **Google DeepMind's Antigravity** and **Gemini 3 Pro**.
 
-This project is a self-hosted, minimalist database system designed to track personal film and book consumption. It was built to solve the limitations of commercial platforms (like Letterboxd or Goodreads) by offering full data ownership, offline capability, and specialized tracking features tailored to personal needs.
+This project is a self-hosted, minimalist database system designed to track personal film and book consumption. It was built to solve the limitations of commercial platforms by offering full data ownership, offline capability, and specialized tracking features tailored to personal needs.
 
 ## Philosophy
 
-The core goal is data sovereignty. Unlike cloud-based services, this application runs locally (or on a Raspberry Pi), ensuring that your reading and watching history remains private and accessible without an internet connection. It prioritizes speed, simplicity, and specific user-defined features over social networking functions.
+The core goal is data sovereignty. Unlike cloud-based services, this application runs locally (or on a Raspberry Pi), ensuring that your reading and watching history remains private and accessible without an internet connection. It prioritizes speed, simplicity, and specific user-defined features.
 
 ## Features
 
 *   **TMDB Integration:** Automatically fetches metadata (poster, director, year, rating) for films using the TMDB API.
 *   **Custom Filtering:** Advanced filtering by director, genre, year, and watching status.
-*   **Re-watch History:** Tracks multiple viewing dates for the same film, displaying a total count and a detailed history log.
+*   **Re-watch History:** Tracks multiple viewing dates for the same film.
 *   **Cinema Mode:** Differentiates between films watched at home and films watched in a cinema theater.
-*   **CSV Import (Notion):** Import your existing library exported from Notion or other CSV sources.
-*   **Bulk Auto-Fetch:** A tool to verify and automatically populate missing metadata for imported libraries.
-*   **Book Tracking:** (In Development) A dedicated section for tracking reading progress and library management.
-
-## 📸 Screenshots
-
-### 🎥 Films
-| Showcase |
-|:---:|
-| ![Home Page](screenshots/home.png) |
-
-| Archive (Filter & Search) | Analytics |
-|:---:|:---:|
-| ![Archive](screenshots/archive.png) | ![Stats](screenshots/stats.png) |
-
-### 📚 Books
-| Library & Tracking |
-|:---:|
-| ![Books Library](screenshots/books_lib.png) |
+*   **CSV Import (Notion):** Import your existing library exported from Notion or other CSV sources with column mapping support.
+*   **Auto-Fetch & Sync:** Tools to populate missing metadata and synchronize actor details.
+*   **Book Tracking:** A dedicated section for tracking reading progress and library management.
 
 ## Tech Stack
 
@@ -43,18 +27,19 @@ The core goal is data sovereignty. Unlike cloud-based services, this application
 
 ## Installation & Usage
 
-This project is designed to be easily deployed on any system with Node.js support (local machine or Raspberry Pi).
+This project is designed to be easily deployed on any system with Node.js support.
 
 ### Prerequisites
-*   Node.js (v18 or higher recommended)
-*   npm (Node Package Manager)
+*   **Node.js**: **LTS Version (v20 or v22)** is required.
+    *   *Warning for Windows Users:* Do not install v24 or "Current" versions as they may cause build errors with SQLite.
+*   **Git**: To clone the repository.
 
 ### Setup Steps
 
 1.  **Clone the Repository:**
     ```bash
-    git clone https://github.com/yourusername/personal-db.git
-    cd personal-db
+    git clone https://github.com/Vialeth/personalDB.git
+    cd personalDB
     ```
 
 2.  **Install Dependencies:**
@@ -63,16 +48,25 @@ This project is designed to be easily deployed on any system with Node.js suppor
     ```
 
 3.  **Initialize Database:**
-    The project excludes the database file for privacy. You need to run the setup script to create a fresh, empty database schema.
+    The project excludes the database files (`database/*.db`) for privacy. You must run the setup script to create the necessary tables.
     ```bash
-    node setup_db.js
+    npm run setup
     ```
 
 4.  **Start the Server:**
     ```bash
     npm start
     ```
-    The application will be accessible at `http://localhost:3001`.
+    The application will be accessible at:
+    *   Local: `http://localhost:3001`
+    *   Network: `http://<YOUR_IP>:3001`
 
-### Data Privacy Note
+### Updating
+To get the latest features:
+```bash
+npm run update
+```
+*(Note: If you encounter conflicts, backup your `.db` files before updating)*
+
+## Data Privacy
 This repository contains only the application logic. The database files (`database/*.db`) and uploaded media (`public/uploads/`) are ignored by Git. When you run the project, it creates a local database that stays on your machine.

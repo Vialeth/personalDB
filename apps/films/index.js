@@ -1217,7 +1217,7 @@ router.post('/api/tools/fetch-missing', async (req, res) => {
             // Only enrich if we really need to check director or there are multiple options
             // actually we always need actors/details for the update.
             const enrichedCandidates = [];
-            for (const cand of candidates.slice(0, 3)) {
+            for (const cand of candidates.slice(0, 5)) {
                 const details = await getDetails(cand.id);
                 if (details) {
                     const director = details.credits?.crew?.find(c => c.job === 'Director')?.name || '';
@@ -1267,11 +1267,18 @@ router.post('/api/tools/fetch-missing', async (req, res) => {
 
             // D. Exact Title Match (Ignore Year - Absolute Fallback)
             if (!winner) {
+                const cleanTitle = film.title.trim().toLowerCase();
                 const titleStrictMatches = enrichedCandidates.filter(c =>
-                    c.original_title.toLowerCase() === film.title.toLowerCase() ||
-                    c.title.toLowerCase() === film.title.toLowerCase()
+                    c.original_title.toLowerCase() === cleanTitle ||
+                    c.title.toLowerCase() === cleanTitle
                 );
-                if (titleStrictMatches.length === 1) winner = titleStrictMatches[0];
+
+                // If we have exact matches, pick the best one
+                if (titleStrictMatches.length > 0) {
+                    // Sort by popularity/votes
+                    titleStrictMatches.sort((a, b) => b.vote_count - a.vote_count);
+                    winner = titleStrictMatches[0];
+                }
             }
 
             // 4. Action

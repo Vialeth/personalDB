@@ -1205,10 +1205,8 @@ router.post('/api/tools/fetch-missing', async (req, res) => {
             if (film.imageUrl && film.imageUrl.trim() !== '') continue;
 
             // 1. Search Strategy - Multi-Stage Smart Search
-            // Stage A: Original Title (English/International)
-            // Stage B: Year-Stripped Original
-            // Stage C: Turkish Title (if available and previous stages failed)
-            // Stage D: Year-Stripped Turkish
+            // Only try next stage if previous returned ZERO results
+            // If we have 1+ results, they're likely correct - no need to search more
 
             const originalTitle = film.title.trim();
             const turkishTitle = film.title_tr ? film.title_tr.trim() : null;
@@ -1221,36 +1219,24 @@ router.post('/api/tools/fetch-missing', async (req, res) => {
             // A. Primary Search (Original Title)
             let candidates = await searchTMDB(originalTitle);
 
-            // B. Fallback 1: Year-Stripped Original (if few results)
-            if (candidates.length <= 2) {
+            // B. Fallback 1: Year-Stripped Original (ONLY if no results)
+            if (candidates.length === 0) {
                 const cleanTitle = stripYear(originalTitle);
                 if (cleanTitle !== originalTitle) {
-                    const fallbackCandidates = await searchTMDB(cleanTitle);
-                    const existingIds = new Set(candidates.map(c => c.id));
-                    for (const c of fallbackCandidates) {
-                        if (!existingIds.has(c.id)) candidates.push(c);
-                    }
+                    candidates = await searchTMDB(cleanTitle);
                 }
             }
 
-            // C. Fallback 2: Turkish Title (if still few results and Turkish exists)
-            if (candidates.length <= 2 && turkishTitle && turkishTitle !== originalTitle) {
-                const turkishCandidates = await searchTMDB(turkishTitle);
-                const existingIds = new Set(candidates.map(c => c.id));
-                for (const c of turkishCandidates) {
-                    if (!existingIds.has(c.id)) candidates.push(c);
-                }
+            // C. Fallback 2: Turkish Title (ONLY if still no results)
+            if (candidates.length === 0 && turkishTitle && turkishTitle !== originalTitle) {
+                candidates = await searchTMDB(turkishTitle);
             }
 
-            // D. Fallback 3: Year-Stripped Turkish (last resort)
-            if (candidates.length <= 2 && turkishTitle) {
+            // D. Fallback 3: Year-Stripped Turkish (ONLY if still no results)
+            if (candidates.length === 0 && turkishTitle) {
                 const cleanTurkish = stripYear(turkishTitle);
                 if (cleanTurkish !== turkishTitle && cleanTurkish !== originalTitle) {
-                    const fallbackTurkish = await searchTMDB(cleanTurkish);
-                    const existingIds = new Set(candidates.map(c => c.id));
-                    for (const c of fallbackTurkish) {
-                        if (!existingIds.has(c.id)) candidates.push(c);
-                    }
+                    candidates = await searchTMDB(cleanTurkish);
                 }
             }
 

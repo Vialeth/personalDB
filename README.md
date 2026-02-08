@@ -18,6 +18,22 @@ The core goal is data sovereignty. Unlike cloud-based services, this application
 *   **Auto-Fetch & Sync:** Tools to populate missing metadata and synchronize actor details.
 *   **Book Tracking:** A dedicated section for tracking reading progress and library management.
 
+## 📸 Screenshots
+
+### 🎥 Films
+| Showcase |
+|:---:|
+| ![Home Page](screenshots/home.png) |
+
+| Archive (Filter & Search) | Analytics |
+|:---:|:---:|
+| ![Archive](screenshots/archive.png) | ![Stats](screenshots/stats.png) |
+
+### 📚 Books
+| Library & Tracking |
+|:---:|
+| ![Books Library](screenshots/books_lib.png) |
+
 ## Tech Stack
 
 *   **Runtime:** Node.js

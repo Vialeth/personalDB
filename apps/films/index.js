@@ -1417,7 +1417,7 @@ router.post('/api/tools/fetch-missing', async (req, res) => {
                         title: c.title,
                         original_title: c.original_title,
                         year: c.release_date ? c.release_date.split('-')[0] : '',
-                        director: c.directorName,
+                        directorName: c.directorName,  // Fixed: was 'director', should match frontend expectation
                         poster_path: c.poster_path
                     }))
                 });

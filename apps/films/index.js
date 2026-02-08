@@ -178,40 +178,12 @@ const renderPage = (content, titleKey = 'title_showcase', req = null) => {
                 
                 // Set default date to today
                 dateInput.valueAsDate = new Date();
-
+                
                 // Set form action
                 form.action = '/films/watchlist/' + id + '/watched';
                 
                 modal.showModal();
             }
-            
-            // Edit Mode Toggle (without page reload)
-            function toggleEditMode() {
-                const currentUrl = new URL(window.location);
-                const isEditMode = currentUrl.searchParams.get('edit') === 'true';
-                
-                // Save scroll position
-                sessionStorage.setItem('scrollPos', window.scrollY);
-                
-                if (isEditMode) {
-                    currentUrl.searchParams.delete('edit');
-                } else {
-                    currentUrl.searchParams.set('edit', 'true');
-                }
-                
-                // Navigate to new URL (will reload page)
-                window.location.href = currentUrl.toString();
-            }
-            
-            // Restore scroll position on page load
-            window.addEventListener('DOMContentLoaded', () => {
-                const savedScroll = sessionStorage.getItem('scrollPos');
-                if (savedScroll !== null) {
-                    window.scrollTo(0, parseInt(savedScroll));
-                    sessionStorage.removeItem('scrollPos');
-                }
-            });
-
 
             function toggleDelete(btn, e) {
                 e.stopPropagation();

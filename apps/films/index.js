@@ -1158,144 +1158,264 @@ router.get('/api/details/:id', (req, res) => {
     });
 });
 
-// POST /api/tools/fetch-missing - Auto Fetch Tool
+// POST /api/tools/fetch-missing - Auto Fetch Tool (Smart Match)
 router.post('/api/tools/fetch-missing', async (req, res) => {
     try {
-        // Find films with no image OR possible missing titles
-        // Actually, let's just scan all films to correct titles? 
-        // User said "Auto missing completion", usually implies filling holes.
-        // Let's broaden the scope slightly: Scan ALL films, but only update if fields are missing or if titles need fixing.
-        // For safety, let's stick to the user intent: "film eksiği tamamlama kısmında".
-        // Current logic selects films where imageUrl is NULL. Let's expand this?
-        // Or keep scanning everything? Scanning all might be slow/expensive on quotas.
-        // Let's select ALL films for now to do the Title fix, but safeguard 
-        // against overwriting existing valid data.
-
         const films = db.prepare("SELECT * FROM films").all();
         let updateCount = 0;
         let errors = [];
+        let ambiguous = [];
 
-        // Helper function for Promise-based request
-        const fetchTMDB = (query, year) => {
-            return new Promise((resolve, reject) => {
+        // Helper: Fetch basic search results
+        const searchTMDB = (query, year) => {
+            return new Promise((resolve) => {
                 const url = `${TMDB_BASE_URL}/search/movie?api_key=${TMDB_API_KEY}&language=tr-TR&query=${encodeURIComponent(query)}${year ? `&year=${year}` : ''}`;
-                https.get(url, (apiRes) => {
+                https.get(url, (res) => {
                     let data = '';
-                    apiRes.on('data', c => data += c);
-                    apiRes.on('end', () => {
-                        try {
-                            const json = JSON.parse(data);
-                            if (json.results && json.results.length > 0) {
-                                // Fetch full details for actors
-                                const movieId = json.results[0].id;
-                                const detailUrl = `${TMDB_BASE_URL}/movie/${movieId}?api_key=${TMDB_API_KEY}&language=tr-TR&append_to_response=credits`;
-                                https.get(detailUrl, (detailRes) => {
-                                    let dData = '';
-                                    detailRes.on('data', c => dData += c);
-                                    detailRes.on('end', () => {
-                                        try {
-                                            resolve(JSON.parse(dData));
-                                        } catch (e) { resolve(json.results[0]); }
-                                    });
-                                }).on('error', () => resolve(json.results[0]));
-                            } else {
-                                resolve(null);
-                            }
-                        } catch (e) { resolve(null); }
+                    res.on('data', c => data += c);
+                    res.on('end', () => {
+                        try { resolve(JSON.parse(data).results || []); } catch (e) { resolve([]); }
+                    });
+                }).on('error', () => resolve([]));
+            });
+        };
+
+        // Helper: Fetch details (for director)
+        const getDetails = (id) => {
+            return new Promise((resolve) => {
+                // Determine language based on app preference? For now keep tr-TR
+                const url = `${TMDB_BASE_URL}/movie/${id}?api_key=${TMDB_API_KEY}&language=tr-TR&append_to_response=credits`;
+                https.get(url, (res) => {
+                    let data = '';
+                    res.on('data', c => data += c);
+                    res.on('end', () => {
+                        try { resolve(JSON.parse(data)); } catch (e) { resolve(null); }
                     });
                 }).on('error', () => resolve(null));
             });
         };
 
-        // Process sequentially to be nice to API
         for (const film of films) {
-            // Only try if we have a title
+            // Skip if manually verified (optional flag? for now just process all but be careful)
             if (!film.title) continue;
 
-            // Search
-            const result = await fetchTMDB(film.title, film.year);
+            // 1. Search Strategy
+            // A. Strict Search (Title + Year)
+            let candidates = await searchTMDB(film.title, film.year);
 
-            if (result) {
+            // B. Relaxed Search (Title only) if no results
+            if (candidates.length === 0) {
+                candidates = await searchTMDB(film.title);
+            }
+
+            if (candidates.length === 0) {
+                errors.push(`${film.title} (${film.year}): Bulunamadı`);
+                continue;
+            }
+
+            // 2. Enrich Candidates (Get Director) - Limit to Top 3 to save API
+            // Only enrich if we really need to check director or there are multiple options
+            // actually we always need actors/details for the update.
+            const enrichedCandidates = [];
+            for (const cand of candidates.slice(0, 3)) {
+                const details = await getDetails(cand.id);
+                if (details) {
+                    const director = details.credits?.crew?.find(c => c.job === 'Director')?.name || '';
+                    enrichedCandidates.push({ ...cand, ...details, directorName: director }); // details has extensive info
+                }
+            }
+
+            if (enrichedCandidates.length === 0) {
+                errors.push(`${film.title}: Detaylar çekilemedi`);
+                continue;
+            }
+
+            // 3. Selection Logic
+            let winner = null;
+
+            // A. Director Match (Strong Signal)
+            if (film.director) {
+                const dirMatches = enrichedCandidates.filter(c =>
+                    c.directorName && c.directorName.toLowerCase().includes(film.director.toLowerCase())
+                );
+
+                if (dirMatches.length === 1) {
+                    winner = dirMatches[0];
+                } else if (dirMatches.length > 1) {
+                    // Ambiguous among directors?
+                    // Tie-breaker: Year?
+                    if (film.year) {
+                        const yearMatches = dirMatches.filter(c => c.release_date && c.release_date.startsWith(film.year));
+                        if (yearMatches.length === 1) winner = yearMatches[0];
+                    }
+                }
+            }
+
+            // B. Single Result fallback
+            if (!winner && enrichedCandidates.length === 1) {
+                winner = enrichedCandidates[0];
+            }
+
+            // C. Exact Title + Year Match (if Director check didn't happen or failed)
+            if (!winner && film.year) {
+                const exactMatches = enrichedCandidates.filter(c =>
+                    (c.title.toLowerCase() === film.title.toLowerCase() || c.original_title.toLowerCase() === film.title.toLowerCase()) &&
+                    c.release_date && c.release_date.startsWith(film.year)
+                );
+                if (exactMatches.length === 1) winner = exactMatches[0];
+            }
+
+            // 4. Action
+            if (winner) {
+                // AUTO UPDATE
                 let shouldUpdate = false;
-                let newTitle = film.title;
-                let newTitleTr = film.title_tr;
-                let newImage = film.imageUrl;
-                let newYear = film.year;
-                let newDescription = film.description; // Actually currently mapped to nothing in this tool? Wait, DB has description.
-                // NOTE: User wants 'film description' auto filled.
-                // In DB, 'description' is the legacy field, now typically empty or 'user notes' in old schema?
-                // Wait, based on recent work: 'description' = Plot, 'userNotes' = User Notes.
-                // So we should fill 'description' if empty.
 
-                let newActors = film.actors;
+                // Logic: Only update if fields are missing OR to correct Title Case/Tr
+                // But user wants "Smart Fix".
 
-                // 1. Title Logic (Smart Dual Titles)
-                const tmdbOriginal = result.original_title;
-                const tmdbTurkish = result.title;
+                const newTitle = winner.original_title; // Always prefer original logic?
+                // Logic from before:
+                // If DB Key is Turkish, keep Turkish. If Original, keep Original.
+                // Simplified:
+                const dbIsTr = film.title === winner.title;
+                const dbIsOrg = film.title === winner.original_title;
 
-                // Case A: DB Title is Original -> Add Turkish if missing
-                if (film.title === tmdbOriginal) {
-                    if (!film.title_tr && tmdbTurkish !== tmdbOriginal) {
-                        newTitleTr = tmdbTurkish;
+                let targetTitle = film.title;
+                let targetTitleTr = film.title_tr;
+
+                // Smart Title fill
+                if (!dbIsTr && !dbIsOrg) {
+                    // DB has weird title. Set Title = Original, TitleTR = Turkish
+                    targetTitle = winner.original_title;
+                    targetTitleTr = winner.title;
+                    shouldUpdate = true;
+                } else {
+                    if (!targetTitleTr && winner.title !== winner.original_title) {
+                        targetTitleTr = winner.title;
                         shouldUpdate = true;
                     }
                 }
-                // Case B: DB Title is Turkish -> Swap!
-                else if (film.title === tmdbTurkish && tmdbTurkish !== tmdbOriginal) {
-                    newTitle = tmdbOriginal;
-                    newTitleTr = tmdbTurkish;
-                    shouldUpdate = true;
-                }
-                // Case C: DB Title is neither (typo or other language) -> Keep DB as is, maybe fill Title_TR if empty?
-                // Left untouched for safety.
 
-                // 2. Image Logic (Only fill if missing)
-                if (!film.imageUrl && result.poster_path) {
-                    newImage = `${TMDB_IMAGE_BASE}${result.poster_path}`;
+                let targetImage = film.imageUrl;
+                if (!targetImage && winner.poster_path) {
+                    targetImage = `${TMDB_IMAGE_BASE}${winner.poster_path}`;
+                    shouldUpdate = true;
+                } else if (targetImage && targetImage.includes('tmdb') && winner.poster_path && !targetImage.includes(winner.poster_path)) {
+                    // Image mismatch? Update to correct one?
+                    // User said "bazen hatalı poster çekiyor". Trust new 'Smart Match' result.
+                    targetImage = `${TMDB_IMAGE_BASE}${winner.poster_path}`;
                     shouldUpdate = true;
                 }
 
-                // 3. Year Logic (Force update to Release Year)
-                const tmdbYear = result.release_date ? result.release_date.split('-')[0] : null;
-                if (tmdbYear && film.year !== tmdbYear) {
-                    newYear = tmdbYear;
+                let targetDesc = film.description;
+                if (!targetDesc && winner.overview) {
+                    targetDesc = winner.overview;
                     shouldUpdate = true;
                 }
 
-                // 4. Description Logic (Fill if missing)
-                if ((!film.description || film.description.trim() === '') && result.overview) {
-                    newDescription = result.overview;
+                let targetActors = film.actors;
+                try {
+                    const curr = JSON.parse(film.actors || '[]');
+                    if (curr.length === 0 && winner.credits?.cast) {
+                        targetActors = JSON.stringify(winner.credits.cast.slice(0, 10).map(c => c.name));
+                        shouldUpdate = true;
+                    }
+                } catch (e) { }
+
+                let targetDirector = film.director;
+                if (!targetDirector && winner.directorName) {
+                    targetDirector = winner.directorName;
                     shouldUpdate = true;
                 }
 
-                // 5. Actors Logic (Fill if missing)
-                let currentActors = [];
-                try { currentActors = JSON.parse(film.actors || '[]'); } catch (e) { }
-
-                if ((!currentActors || currentActors.length === 0) && result.credits && result.credits.cast) {
-                    newActors = JSON.stringify(result.credits.cast.slice(0, 10).map(c => c.name));
-                    shouldUpdate = true;
+                let targetYear = film.year;
+                if (winner.release_date) {
+                    const y = winner.release_date.split('-')[0];
+                    if (targetYear !== y) {
+                        targetYear = y;
+                        shouldUpdate = true;
+                    }
                 }
 
                 if (shouldUpdate) {
                     const update = db.prepare(`
                         UPDATE films SET 
-                        title = ?, title_tr = ?, imageUrl = ?, year = ?, description = ?, actors = ?
+                        title = ?, title_tr = ?, imageUrl = ?, year = ?, description = ?, actors = ?, director = ?
                         WHERE id = ?
                     `);
-
-                    update.run(newTitle, newTitleTr, newImage, newYear, newDescription, newActors, film.id);
+                    update.run(targetTitle, targetTitleTr, targetImage, targetYear, targetDesc, targetActors, targetDirector, film.id);
                     updateCount++;
                 }
 
-                // Slight delay
-                await new Promise(r => setTimeout(r, 200));
             } else {
-                errors.push(`${film.title}: Bulunamadı`);
+                // AMBIGUOUS
+                // Return top candidates for user selection
+                ambiguous.push({
+                    film: film,
+                    candidates: enrichedCandidates.map(c => ({
+                        id: c.id,
+                        title: c.title,
+                        original_title: c.original_title,
+                        year: c.release_date ? c.release_date.split('-')[0] : '',
+                        director: c.directorName,
+                        poster_path: c.poster_path
+                    }))
+                });
             }
+
+            // Rate limit compliance
+            await new Promise(r => setTimeout(r, 200));
         }
 
-        res.json({ success: true, count: updateCount, errors });
+        res.json({ success: true, count: updateCount, errors, ambiguous });
+
+    } catch (e) {
+        res.status(500).json({ success: false, error: e.message });
+    }
+});
+
+// POST /api/tools/apply-match - Manually apply a TMDB match
+router.post('/api/tools/apply-match', async (req, res) => {
+    const { filmId, tmdbId } = req.body;
+    try {
+        const film = db.prepare("SELECT * FROM films WHERE id = ?").get(filmId);
+        if (!film) return res.json({ success: false, error: 'Film not found' });
+
+        // Fetch details
+        const url = `${TMDB_BASE_URL}/movie/${tmdbId}?api_key=${TMDB_API_KEY}&language=tr-TR&append_to_response=credits`;
+        https.get(url, (apiRes) => {
+            let data = '';
+            apiRes.on('data', c => data += c);
+            apiRes.on('end', () => {
+                try {
+                    const movie = JSON.parse(data);
+
+                    // Update Logic (Force Update)
+                    const newTitle = movie.original_title;
+                    const newTitleTr = movie.title;
+                    const newYear = movie.release_date ? movie.release_date.split('-')[0] : film.year;
+                    const newImage = movie.poster_path ? `${TMDB_IMAGE_BASE}${movie.poster_path}` : film.imageUrl;
+                    const newDesc = movie.overview || film.description;
+
+                    let newActors = film.actors;
+                    if (movie.credits && movie.credits.cast) {
+                        newActors = JSON.stringify(movie.credits.cast.slice(0, 10).map(c => c.name));
+                    }
+
+                    const director = movie.credits?.crew?.find(c => c.job === 'Director')?.name || film.director;
+
+                    const update = db.prepare(`
+                        UPDATE films SET 
+                        title = ?, title_tr = ?, imageUrl = ?, year = ?, description = ?, actors = ?, director = ?
+                        WHERE id = ?
+                    `);
+                    update.run(newTitle, newTitleTr, newImage, newYear, newDesc, newActors, director, filmId);
+
+                    res.json({ success: true });
+
+                } catch (e) { res.status(500).json({ success: false, error: e.message }); }
+            });
+        }).on('error', (e) => res.status(500).json({ success: false, error: e.message }));
 
     } catch (e) {
         res.status(500).json({ success: false, error: e.message });
@@ -1474,8 +1594,18 @@ router.get('/add', (req, res) => {
             <div id="actorSyncLog" style="margin-top:1rem; max-height:200px; overflow-y:auto; font-size:0.8rem; color:#888; display:none; background:#111; padding:0.5rem; border-radius:4px;"></div>
         </div>
 
+        <dialog id="ambiguityModal" style="background:#111; border:1px solid var(--ch-neon-red); color:#eee; border-radius:12px; padding:0; width:90%; max-width:800px; max-height:80vh; overflow:hidden; box-shadow:0 0 50px rgba(0,0,0,0.8);">
+            <div style="background:#222; padding:1rem; border-bottom:1px solid #444; display:flex; justify-content:space-between; align-items:center; position:sticky; top:0; z-index:10;">
+                <h2 style="margin:0; font-family:var(--ch-font-display); color:var(--ch-neon-red);">⚠️ Manuel Çözümleme</h2>
+                <button onclick="document.getElementById('ambiguityModal').close()" style="background:transparent; border:none; color:#aaa; font-size:1.5rem; cursor:pointer;">&times;</button>
+            </div>
+            <div id="ambiguityList" style="padding:1rem; overflow-y:auto; max-height:calc(80vh - 70px);"></div>
+        </dialog>
+
         <script>
             // ... (keep existing scripts) ...
+            let ambiguousFilms = [];
+
             async function startAutoFetch() {
                 const btn = document.getElementById('btnAutoFetch');
                 const log = document.getElementById('fetchLog');
@@ -1483,23 +1613,32 @@ router.get('/add', (req, res) => {
                 if(!confirm('Bu işlem eksik verisi olan tüm filmler için internetten veri çekecektir. Devam edilsin mi?')) return;
 
                 btn.disabled = true;
-                btn.innerText = 'TARANIYOR...';
+                btn.innerText = 'TARANIYOR (Smart Match)...';
                 log.style.display = 'block';
                 log.innerHTML = '<div>🚀 İşlem başlatıldı...</div>';
 
                 try {
                     const res = await fetch('/films/api/tools/fetch-missing', { method: 'POST' });
-                    
                     const data = await res.json();
                     
                     if(data.success) {
                         log.innerHTML += '<div style="color:var(--ch-neon-gold); margin-top:10px;">✅ İŞLEM TAMAMLANDI!</div>';
                         log.innerHTML += '<div>Toplam Güncellenen: ' + data.count + '</div>';
-                        if(data.errors.length > 0) {
-                            log.innerHTML += '<div style="color:var(--ch-neon-red);">⚠️ Bazı Hatalar:</div>';
-                            data.errors.forEach(e => log.innerHTML += '<div>- ' + e + '</div>');
+                        
+                        if(data.ambiguous && data.ambiguous.length > 0) {
+                            ambiguousFilms = data.ambiguous;
+                            log.innerHTML += '<div style="color:var(--ch-neon-red); margin-top:10px;">⚠️ ' + data.ambiguous.length + ' film için belirsizlik var.</div>';
+                            log.innerHTML += '<button onclick="openAmbiguityModal()" class="btn-cinema-sm" style="margin-top:5px; width:100%; background:var(--ch-neon-red);">⚠️ Manuel Gözden Geçir</button>';
+                            btn.innerText = 'Manuel İşlem Gerekli';
+                        } else {
+                            btn.innerText = 'TAMAMLANDI';
                         }
-                        btn.innerText = 'TAMAMLANDI';
+
+                        if(data.errors.length > 0) {
+                             log.innerHTML += '<div style="color:var(--ch-neon-red); margin-top:10px;">⚠️ Bazı Hatalar:</div>';
+                             data.errors.slice(0, 5).forEach(e => log.innerHTML += '<div>- ' + e + '</div>');
+                             if(data.errors.length > 5) log.innerHTML += '<div>...ve ' + (data.errors.length - 5) + ' tane daha.</div>';
+                        }
                     } else {
                          log.innerHTML += '<div style="color:red;">❌ HATA: ' + data.error + '</div>';
                          btn.innerText = 'HATA';
@@ -1511,6 +1650,71 @@ router.get('/add', (req, res) => {
                      btn.innerText = 'TEKRAR DENE';
                      btn.disabled = false;
                 }
+            }
+            
+            function openAmbiguityModal() {
+                const modal = document.getElementById('ambiguityModal');
+                renderAmbiguityList();
+                modal.showModal();
+            }
+
+            function renderAmbiguityList() {
+                const container = document.getElementById('ambiguityList');
+                if(ambiguousFilms.length === 0) {
+                    container.innerHTML = '<div style="text-align:center; padding:2rem;">Tüm çakışmalar çözüldü! 🎉</div>';
+                    setTimeout(() => document.getElementById('ambiguityModal').close(), 1500);
+                    return;
+                }
+
+                container.innerHTML = ambiguousFilms.map((item, index) => {
+                    const film = item.film;
+                    let html = '<div style="background:#222; border:1px solid #444; padding:1rem; border-radius:8px; margin-bottom:1rem;">';
+                    html += '<h3 style="margin:0 0 0.5rem; color:var(--ch-neon-gold); font-size:1.1rem;">' + film.title + ' <span style="font-size:0.8rem; color:#888;">(' + (film.year || 'Yıl Yok') + ')</span></h3>';
+                    html += '<div style="font-size:0.8rem; margin-bottom:1rem; color:#aaa;">DB Yönetmen: ' + (film.director || 'Yok') + '</div>';
+                    
+                    html += '<div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(100px, 1fr)); gap:10px;">';
+                    
+                    const candidatesHtml = item.candidates.map(c => {
+                        const poster = c.poster_path ? '<img src="${TMDB_IMAGE_BASE}' + c.poster_path + '" style="width:100%; height:100%; object-fit:cover;">' : '<div style="width:100%; height:100%; background:#333;"></div>';
+                        return '<div onclick="resolveItem(' + index + ', ' + c.id + ')" style="cursor:pointer; border:1px solid #333; padding:5px; border-radius:4px; text-align:center; transition:0.2s; background:#111; position:relative;" onmouseover="this.style.borderColor=\\'var(--ch-neon-cyan)\\'" onmouseout="this.style.borderColor=\\'#333\\'">' +
+                               '<div style="aspect-ratio:2/3; background:#000; margin-bottom:5px; position:relative;">' + 
+                               poster + 
+                               '<div style="position:absolute; bottom:0; left:0; right:0; background:rgba(0,0,0,0.7); font-size:0.7rem; color:#fff; padding:2px;">' + (c.year || '-') + '</div>' + 
+                               '</div>' +
+                               '<div style="font-size:0.8rem; font-weight:bold; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">' + c.title.replace(/'/g, "&#39;") + '</div>' +
+                               '<div style="font-size:0.7rem; color:#888; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">' + (c.directorName || '').replace(/'/g, "&#39;") + '</div>' +
+                               '</div>';
+                    }).join('');
+                    
+                    html += candidatesHtml;
+
+                    html += '<div onclick="skipItem(' + index + ')" style="cursor:pointer; border:1px dashed #444; display:flex; align-items:center; justify-content:center; padding:10px; color:#666; font-size:0.8rem; flex-direction:column; gap:5px;"><span>🚫</span><span>Atla</span></div>';
+                    html += '</div></div>';
+                    return html;
+                }).join('');
+            }
+
+            async function resolveItem(index, tmdbId) {
+                const item = ambiguousFilms[index];
+                const filmId = item.film.id;
+                
+                try {
+                     await fetch('/films/api/tools/apply-match', { 
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({ filmId, tmdbId })
+                    });
+                    
+                    ambiguousFilms.splice(index, 1);
+                    renderAmbiguityList();
+                } catch(e) {
+                    alert('Hata oluştu: ' + e.message);
+                }
+            }
+
+            function skipItem(index) {
+                ambiguousFilms.splice(index, 1);
+                renderAmbiguityList();
             }
 
             async function startActorSync() {

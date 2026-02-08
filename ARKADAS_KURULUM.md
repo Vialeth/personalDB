@@ -31,18 +31,18 @@ chmod +x install.sh
 ```
 
 **Windows:**
-```bash
-npm install
-npm run setup
-```
+1. `kurulum.bat` dosyasına çift tıkla.
 
 Bu işlem bittiğinde `database/` klasörü içinde boş bir veritabanı oluşacaktır.
 
 ## 4. Uygulamayı Başlat
 
 ```bash
+# Mac/Linux:
 npm start
 ```
+**Windows:**
+`baslat.bat` dosyasına çift tıkla.
 Tarayıcıda `http://localhost:3001` adresine giderek kullanmaya başlayabilir.
 
 ---
@@ -58,9 +58,7 @@ chmod +x update_local.sh
 ```
 
 **Windows:**
-```bash
-npm run update
-```
+1. `update_local.bat` dosyasına çift tıkla.
 
 Bu komut:
 1.  Senin yazdığın yeni kodları (`git pull`) çeker.

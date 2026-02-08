@@ -1199,6 +1199,9 @@ router.post('/api/tools/fetch-missing', async (req, res) => {
             // Skip if manually verified (optional flag? for now just process all but be careful)
             if (!film.title) continue;
 
+            // Skip if already has an image (User Request)
+            if (film.imageUrl && film.imageUrl.trim() !== '') continue;
+
             // 1. Search Strategy
             // A. Strict Search (Title + Year)
             let candidates = await searchTMDB(film.title, film.year);

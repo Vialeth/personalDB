@@ -1204,25 +1204,34 @@ router.post('/api/tools/fetch-missing', async (req, res) => {
             // Skip if already has an image (User Request)
             if (film.imageUrl && film.imageUrl.trim() !== '') continue;
 
-            // 1. Search Strategy
-            // FIX: User imports 'Watch Year' as 'Year'. 
-            // Searching with year=2024 fails for old movies.
-            // Always search by Title ONLY to get the best candidates.
-            // Our Selection Logic (Director, Matches) will filter out the noise.
+            // 1. Search Strategy - Smart Dual Search
+            // Problem: Some titles have appended years ("Ejderhayı Nasıl Eğitirsin 2025")
+            // But some REAL titles contain years ("2012", "1917", "2001: A Space Odyssey")
+            // Solution: Try original first, fallback to cleaned version if needed
 
-            // CLEANUP: Some titles have year appended ("Ejderhayı Nasıl Eğitirsin 2025")
-            // Strip trailing year patterns before search
-            let cleanTitle = film.title.trim();
-            cleanTitle = cleanTitle.replace(/\s+\(?\d{4}\)?$/g, ''); // Remove " 2025", " (2025)", "(2025)"
-            cleanTitle = cleanTitle.replace(/\s+\[\d{4}\]$/g, '');   // Remove " [2025]", "[2025]"
+            const originalTitle = film.title.trim();
 
-            // A. Relaxed Search (Title only)
-            let candidates = await searchTMDB(cleanTitle);
+            // A. Primary Search (Original Title)
+            let candidates = await searchTMDB(originalTitle);
 
-            /* Old Strict Search Logic - Removed to fix Watch Year issue
-            let candidates = await searchTMDB(film.title, film.year);
-            if (candidates.length === 0) candidates = await searchTMDB(film.title);
-            */
+            // B. Fallback Search (if no/few results, try year-stripped title)
+            if (candidates.length <= 2) {
+                // Strip trailing year patterns: " 2025", " (2025)", "(2025)", " [2025]"
+                let cleanTitle = originalTitle.replace(/\s+\(?\d{4}\)?$/g, '').replace(/\s+\[\d{4}\]$/g, '').trim();
+
+                // Only search if strip actually changed something
+                if (cleanTitle !== originalTitle) {
+                    const fallbackCandidates = await searchTMDB(cleanTitle);
+
+                    // Merge results (avoid duplicates by ID)
+                    const existingIds = new Set(candidates.map(c => c.id));
+                    for (const c of fallbackCandidates) {
+                        if (!existingIds.has(c.id)) {
+                            candidates.push(c);
+                        }
+                    }
+                }
+            }
 
             if (candidates.length === 0) {
                 errors.push(`${film.title} (${film.year}): Bulunamadı`);

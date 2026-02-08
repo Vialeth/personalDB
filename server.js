@@ -5,7 +5,8 @@ const PORT = process.env.PORT || 3001;
 
 // Middleware
 app.use(express.static(path.join(__dirname, 'public')));
-app.use(express.urlencoded({ extended: true }));
+app.use(express.json()); // CRITICAL: Parse JSON request bodies (for AJAX requests)
+app.use(express.urlencoded({ extended: true })); // Parse URL-encoded bodies (for form submissions)
 
 // Template engine setup (simple placeholder replacement for now, or just sendFile)
 // For this simple project, we can just use simple string replacement or separate HTML files.

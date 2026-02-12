@@ -233,6 +233,16 @@ const renderPage = (content, titleKey = 'title_showcase', req = null) => {
                 document.getElementById('editUserNotes').value = film.userNotes || '';
                 document.getElementById('editDescription').value = film.description || '';
                 
+                let genreStr = '';
+                try {
+                    if (film.genres && film.genres.trim().startsWith('[')) {
+                        genreStr = JSON.parse(film.genres).join(', ');
+                    } else {
+                        genreStr = film.genres || '';
+                    }
+                } catch(e) { genreStr = film.genres || ''; }
+                document.getElementById('editGenres').value = genreStr;
+
                 let actorStr = '';
                 try {
                     if (film.actors) {
@@ -520,6 +530,11 @@ const renderPage = (content, titleKey = 'title_showcase', req = null) => {
                 </div>
 
                 <div style="margin-top:1.5rem;">
+                     <label style="display:block; color:#aaa; margin-bottom:5px; font-size:0.8rem; font-weight:bold;">Türler (Virgülle ayırın)</label>
+                     <input type="text" name="genres" id="editGenres" class="cinema-input" placeholder="Örn: Bilim Kurgu, Dram, Macera...">
+                </div>
+
+                <div style="margin-top:1.5rem;">
                      <label style="display:block; color:#aaa; margin-bottom:5px; font-size:0.8rem; font-weight:bold;">Oyuncular (Virgülle ayırın)</label>
                      <input type="text" name="actors" id="editActors" class="cinema-input" placeholder="Örn: Leonardo DiCaprio, Joseph Gordon-Levitt...">
                 </div>
@@ -647,6 +662,12 @@ const renderPage = (content, titleKey = 'title_showcase', req = null) => {
                 // Director
                 const director = movie.credits?.crew?.find(c => c.job === 'Director');
                 if(director) document.getElementById('editDirector').value = director.name;
+
+                // Genres
+                if(movie.genres) {
+                    const genreList = movie.genres.map(g => g.name).join(', ');
+                    document.getElementById('editGenres').value = genreList;
+                }
 
                 // Description (Overview)
                 if(movie.overview) {
@@ -2098,9 +2119,12 @@ router.post('/edit/:id', upload.single('image'), (req, res) => {
 
     // Handle Genres
     if (genres) {
-        // If it comes from the tag input, it's already a JSON string
         if (typeof genres === 'string' && genres.trim().startsWith('[')) {
-            // Already JSON, keep it
+            // Already JSON
+        } else if (typeof genres === 'string') {
+            // Comma separated string -> JSON Array
+            const genreList = genres.split(',').map(g => g.trim()).filter(g => g.length > 0);
+            genres = JSON.stringify(genreList);
         } else {
             if (!Array.isArray(genres)) genres = [genres];
             genres = JSON.stringify(genres);

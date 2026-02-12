@@ -231,6 +231,20 @@ const renderPage = (content, titleKey = 'title_showcase', req = null) => {
                 document.getElementById('editRating').value = film.rating || '';
                 document.getElementById('editWatchDate').value = isoDate;
                 document.getElementById('editUserNotes').value = film.userNotes || '';
+                document.getElementById('editDescription').value = film.description || '';
+                
+                let actorStr = '';
+                try {
+                    if (film.actors) {
+                        if (film.actors.startsWith('[')) {
+                            const arr = JSON.parse(film.actors);
+                            actorStr = arr.join(', ');
+                        } else {
+                            actorStr = film.actors;
+                        }
+                    }
+                } catch(e) { actorStr = film.actors || ''; }
+                document.getElementById('editActors').value = actorStr;
                 
                 document.getElementById('editIsCinema').checked = film.isCinema === 1;
                 document.getElementById('editIsHallOfFame').checked = film.isHallOfFame === 1;
@@ -506,6 +520,16 @@ const renderPage = (content, titleKey = 'title_showcase', req = null) => {
                 </div>
 
                 <div style="margin-top:1.5rem;">
+                     <label style="display:block; color:#aaa; margin-bottom:5px; font-size:0.8rem; font-weight:bold;">Oyuncular (Virgülle ayırın)</label>
+                     <input type="text" name="actors" id="editActors" class="cinema-input" placeholder="Örn: Leonardo DiCaprio, Joseph Gordon-Levitt...">
+                </div>
+
+                <div style="margin-top:1.5rem;">
+                     <label style="display:block; color:#aaa; margin-bottom:5px; font-size:0.8rem; font-weight:bold;">Film Özeti (Description)</label>
+                     <textarea name="description" id="editDescription" rows="4" class="cinema-input" style="font-family:inherit; resize:vertical;"></textarea>
+                </div>
+
+                <div style="margin-top:1.5rem;">
                      <label style="display:block; color:#aaa; margin-bottom:5px; font-size:0.8rem; font-weight:bold;">Afiş URL</label>
                      <div style="display:flex; gap:10px;">
                         <input type="text" name="imageUrl" id="editImageUrl" class="cinema-input" style="flex:1;">
@@ -623,6 +647,17 @@ const renderPage = (content, titleKey = 'title_showcase', req = null) => {
                 // Director
                 const director = movie.credits?.crew?.find(c => c.job === 'Director');
                 if(director) document.getElementById('editDirector').value = director.name;
+
+                // Description (Overview)
+                if(movie.overview) {
+                    document.getElementById('editDescription').value = movie.overview;
+                }
+
+                // Cast (Actors)
+                if(movie.credits && movie.credits.cast) {
+                    const topCast = movie.credits.cast.slice(0, 10).map(c => c.name).join(', ');
+                    document.getElementById('editActors').value = topCast;
+                }
 
                 // Poster
                 if(movie.poster_path) {
@@ -2076,11 +2111,13 @@ router.post('/edit/:id', upload.single('image'), (req, res) => {
 
     // Handle Actors
     let actors = req.body.actors;
-    if (actors) {
-        if (typeof actors === 'string' && actors.trim().startsWith('[')) {
-            // Already JSON
+    if (actors && typeof actors === 'string') {
+        if (actors.trim().startsWith('[')) {
+            // Already JSON, keep it
         } else {
-            actors = '[]';
+            // Comma separated string -> JSON Array
+            const actorList = actors.split(',').map(a => a.trim()).filter(a => a.length > 0);
+            actors = JSON.stringify(actorList);
         }
     } else {
         actors = '[]';

@@ -1295,7 +1295,7 @@ router.get('/archive', (req, res) => {
 
     res.send(renderPage(`
         <div class="section-header">
-            <h2 style="color:var(--ch-neon-gold);">${t('title_archive', locale).toUpperCase()} (${films.length})</h2>
+            <h2 class="page-title">${t('title_archive', locale)} (${films.length})</h2>
         </div>
         ${filterHtml}
         <div class="film-grid">

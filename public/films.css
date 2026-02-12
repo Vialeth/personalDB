@@ -4,6 +4,7 @@
     --ch-bg-card: #18191f;
     --ch-neon-red: #ff2a2a;
     --ch-neon-cyan: #00f2ff;
+    --ch-neon-gold: #ffd700;
     --ch-text-main: #e0e0e0;
     --ch-text-muted: #888;
     --ch-font-display: 'Oswald', sans-serif;
@@ -730,6 +731,7 @@ a {
 .genre-type-input:focus {
     outline: none;
 }
+
 /* Search Button Style */
 .btn-search {
     padding: 0.8rem 1.5rem;
@@ -749,8 +751,147 @@ a {
     box-shadow: 0 0 5px rgba(255, 215, 0, 0.2);
 }
 
+
 .btn-search:hover {
     background: #fff;
     box-shadow: 0 0 15px rgba(255, 215, 0, 0.6);
     transform: translateY(-1px);
+}
+
+/* Client-Side Edit Mode */
+.edit-actions-container {
+    display: none;
+}
+
+body.edit-mode .edit-actions-container {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-top: 0.5rem;
+    padding-top: 0.5rem;
+    border-top: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+/* Ensure edit buttons are clickable */
+body.edit-mode .edit-actions-container button {
+    position: relative;
+    z-index: 10;
+}
+
+/* Enhanced Edit Modal & TMDB Integration */
+.modal-glass {
+    background: rgba(20, 20, 20, 0.95);
+    border: 1px solid var(--ch-neon-cyan);
+    color: #fff;
+    padding: 0;
+    border-radius: 12px;
+    width: 90%;
+    max-width: 700px;
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    max-height: 90vh;
+    overflow-y: auto;
+    box-shadow: 0 0 50px rgba(0, 242, 255, 0.15);
+}
+
+.modal-header {
+    background: rgba(0, 0, 0, 0.4);
+    padding: 1.5rem;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    backdrop-filter: blur(10px);
+}
+
+.modal-body {
+    padding: 2rem;
+}
+
+.modal-footer {
+    padding: 1.5rem;
+    background: rgba(0, 0, 0, 0.4);
+    border-top: 1px solid rgba(255, 255, 255, 0.1);
+    display: flex;
+    justify-content: flex-end;
+    gap: 1rem;
+}
+
+.tmdb-search-btn {
+    background: var(--ch-neon-gold);
+    color: #000;
+    border: none;
+    padding: 0.5rem 1rem;
+    border-radius: 4px;
+    font-weight: bold;
+    cursor: pointer;
+    font-family: var(--ch-font-display);
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    transition: all 0.2s;
+}
+
+.tmdb-search-btn:hover {
+    background: #fff;
+    box-shadow: 0 0 15px rgba(255, 215, 0, 0.4);
+}
+
+/* Search Overlay */
+#tmdbSearchOverlay {
+    display: none;
+    margin-bottom: 2rem;
+    background: rgba(0, 0, 0, 0.3);
+    padding: 1rem;
+    border-radius: 8px;
+    border: 1px solid #333;
+}
+
+#tmdbSearchResults {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+    gap: 1rem;
+    margin-top: 1rem;
+    max-height: 300px;
+    overflow-y: auto;
+}
+
+.tmdb-result-card {
+    background: #111;
+    border: 1px solid #333;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: all 0.2s;
+    overflow: hidden;
+}
+
+.tmdb-result-card:hover {
+    border-color: var(--ch-neon-cyan);
+    transform: translateY(-2px);
+}
+
+.tmdb-result-poster {
+    width: 100%;
+    aspect-ratio: 2/3;
+    object-fit: cover;
+}
+
+.tmdb-result-info {
+    padding: 0.5rem;
+    font-size: 0.8rem;
+}
+
+.tmdb-result-title {
+    color: #fff;
+    font-weight: bold;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.tmdb-result-year {
+    color: #888;
 }

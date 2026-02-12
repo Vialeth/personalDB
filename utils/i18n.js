@@ -21,7 +21,7 @@ const translations = {
 
         // Films Page Titles
         'title_showcase': 'Sinema Salonu',
-        'title_archive': 'Film Arşivi',
+        'title_archive': 'FİLM ARŞİVİ',
         'title_watchlist': 'İzlenecekler Listesi',
         'title_stats': 'İstatistikler',
         'title_add': 'Yeni Film Ekle',
@@ -33,7 +33,7 @@ const translations = {
         'year': 'Yıl',
         'genre': 'Tür',
         'watch_date': 'İzleme Tarihi',
-        'cinema_mode': 'Sinema Modu',
+        'cinema_mode': 'Sinema',
         'notes': 'Kişisel Notunuz',
         'add_film_btn': 'Filmi Kaydet',
         'fetch_data_btn': 'Verileri Getir',
@@ -151,7 +151,7 @@ const translations = {
         'year': 'Year',
         'genre': 'Genre',
         'watch_date': 'Watch Date',
-        'cinema_mode': 'Cinema Mode',
+        'cinema_mode': 'Cinema',
         'notes': 'Personal Notes',
         'add_film_btn': 'Save Film',
         'fetch_data_btn': 'Fetch Data',

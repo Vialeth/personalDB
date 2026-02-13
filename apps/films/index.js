@@ -2013,6 +2013,9 @@ router.get('/add', (req, res) => {
 
 
 
+
+
+        <script>
             async function startActorSync() {
                 const btn = document.getElementById('btnActorSync');
                 const log = document.getElementById('actorSyncLog');

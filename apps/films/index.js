@@ -5,6 +5,7 @@ const path = require('path');
 const multer = require('multer');
 const fs = require('fs');
 const https = require('https');
+const http = require('http');
 const { t, getLocale } = require('../../utils/i18n');
 
 // TMDB Configuration
@@ -107,6 +108,7 @@ const renderPage = (content, titleKey = 'title_showcase', req = null) => {
                 <a href="/films" class="nav-item ${currentPath === '/films' ? 'active' : ''}">${t('nav_showcase', locale)}</a>
                 <a href="/films/archive" class="nav-item ${currentPath === '/films/archive' ? 'active' : ''}">${t('nav_archive', locale)}</a>
                 <a href="/films/watchlist" class="nav-item ${currentPath === '/films/watchlist' ? 'active' : ''}">${t('nav_watchlist', locale)}</a>
+                <a href="/films/friends" class="nav-item ${currentPath === '/films/friends' ? 'active' : ''}">ARKADAŞLAR</a>
                 <a href="/films/stats" class="nav-item ${currentPath === '/films/stats' ? 'active' : ''}">${t('nav_stats', locale)}</a>
                 <a href="/films/hall-of-fame" class="nav-item ${currentPath === '/films/hall-of-fame' ? 'active' : ''}" style="color:#ffd700;">${t('nav_hall_of_fame', locale)}</a>
                 <a href="/films/add" class="nav-item ${currentPath === '/films/add' ? 'active' : ''}">${t('nav_add', locale)}</a>
@@ -352,15 +354,25 @@ const renderPage = (content, titleKey = 'title_showcase', req = null) => {
                             <div style="flex:1;">
                                 <h2 id="modalTitle" style="font-family:var(--ch-font-display); font-size:2.5rem; margin:0 0 0.5rem 0; line-height:1.1; color:var(--ch-neon-gold);"></h2>
                                 <div id="modalTitleTr" style="color:#888; margin-bottom:1.5rem; font-size:1.1rem;"></div>
+                                
                             </div>
                             <div id="modalRatingBadge" class="film-rating-badge" style="width:50px; height:50px; flex-shrink:0; margin-right:40px;"></div>
                         </div>
                         
-                        <div style="display:flex; align-items:center; gap:1.5rem; margin-bottom:2rem; font-size:0.95rem; color:#aaa; border-bottom:1px solid #333; padding-bottom:1rem;">
-                            <div id="modalYear"></div>
-                            <div id="modalDirector" style="color:#e0e0e0;"></div>
-                            <div id="modalCinema"></div>
+                        <div style="display:flex; flex-direction:column; gap:10px; margin-bottom:2rem; border-bottom:1px solid #333; padding-bottom:1rem;">
+                            <div style="display:flex; align-items:center; gap:1.5rem; font-size:0.95rem; color:#aaa;">
+                                <div id="modalYear"></div>
+                                <div id="modalDirector" style="color:#e0e0e0;"></div>
+                                <div id="modalCinema"></div>
+                            </div>
+                            
+                            <!-- Recommendations Button -->
+                            <button type="button" onclick="openRecommendModal()" style="align-self:flex-start; background:rgba(255, 255, 255, 0.05); border:1px solid #444; color:#ccc; padding:6px 10px; border-radius:4px; cursor:pointer; font-size:0.85rem; transition:all 0.2s;" onmouseover="this.style.borderColor='var(--ch-neon-gold)'; this.style.color='var(--ch-neon-gold)'; this.style.background='rgba(255, 215, 0, 0.1)'" onmouseout="this.style.borderColor='#444'; this.style.color='#ccc'; this.style.background='rgba(255, 255, 255, 0.05)'">
+                                Arkadaşına Öner
+                            </button>
                         </div>
+
+
 
 
                         <div id="modalDescription" style="line-height:1.6; margin-bottom:2rem; font-size:1.05rem;"></div>
@@ -384,7 +396,109 @@ const renderPage = (content, titleKey = 'title_showcase', req = null) => {
             </div>
         </dialog>
 
+        <!-- RECOMMEND MODAL -->
+        <dialog id="recommendModal" style="background:var(--ch-bg-card); border:1px solid var(--ch-neon-gold); color:#white; padding:2rem; border-radius:12px; backdrop-filter:blur(20px); max-width:500px; width:90%; box-shadow:0 0 50px rgba(0,0,0,0.8);">
+            <div style="position:relative;">
+                <h3 style="margin:0 0 1.5rem 0; font-family:var(--ch-font-display); color:var(--ch-neon-gold); font-size:1.5rem;">FİLM ÖNER</h3>
+                <div id="recFilmTitle" style="color:#ccc; margin-bottom:1.5rem; font-size:1.1rem; border-bottom:1px solid #333; padding-bottom:1rem;"></div>
+                
+                <form onsubmit="sendRecommendation(event)">
+                    <input type="hidden" id="recTmdbId">
+                    <input type="hidden" id="recFilmTitleInput">
+                    
+                    <div style="margin-bottom:1.5rem;">
+                        <label style="display:block; color:#aaa; margin-bottom:8px; font-size:0.9rem;">Arkadaş Seç</label>
+                        <select id="recFriendId" required class="cinema-input" style="width:100%; height:45px;">
+                            <option value="">Seçiniz...</option>
+                        </select>
+                    </div>
+                    
+                    <div style="margin-bottom:2rem;">
+                        <label style="display:block; color:#aaa; margin-bottom:8px; font-size:0.9rem;">Notun (Opsiyonel)</label>
+                        <textarea id="recNote" class="cinema-input" style="width:100%; height:100px; resize:vertical;" placeholder="Bu filmi kesin izlemelisin..."></textarea>
+                    </div>
+                    
+                    <div style="display:flex; justify-content:flex-end; gap:10px;">
+                        <button type="button" onclick="document.getElementById('recommendModal').close()" class="btn-cinema" style="background:transparent; border:1px solid #444; color:#aaa;">İPTAL</button>
+                        <button type="submit" id="btnSendRec" class="btn-cinema" style="border-color:var(--ch-neon-gold); color:var(--ch-neon-gold);">GÖNDER</button>
+                    </div>
+                </form>
+            </div>
+        </dialog>
+
         <script>
+            async function openRecommendModal() {
+                const title = document.getElementById('modalTitle').innerText;
+                // Currently detailModal renders from a string, so we need to pass TMDB ID if available.
+                // But wait, the film object isn't globally available here.
+                // We stored it in 'detailModal' opening function as local var.
+                // Let's store current film in a global var when opening detail modal.
+                
+                document.getElementById('recFilmTitle').innerText = title;
+                document.getElementById('recFilmTitleInput').value = title;
+                
+                // Fetch friends
+                const select = document.getElementById('recFriendId');
+                select.innerHTML = '<option value="">Yükleniyor...</option>';
+                
+                try {
+                    const res = await fetch('/films/api/friends/list');
+                    const friends = await res.json();
+                    
+                    if (friends.length === 0) {
+                         select.innerHTML = '<option value="">Arkadaş bulunamadı</option>';
+                    } else {
+                        select.innerHTML = '<option value="">Seçiniz...</option>' + 
+                            friends.map(f => \`<option value="\${f.id}">\${f.name}</option>\`).join('');
+                    }
+                    
+                    document.getElementById('recommendModal').showModal();
+                } catch (e) {
+                    alert('Arkadaş listesi yüklenemedi.');
+                }
+            }
+
+            async function sendRecommendation(e) {
+                e.preventDefault();
+                const btn = document.getElementById('btnSendRec');
+                const friendId = document.getElementById('recFriendId').value;
+                const note = document.getElementById('recNote').value;
+                const title = document.getElementById('recFilmTitleInput').value;
+                
+                // Attempt to find TMDB ID from opened modal context if possible, 
+                // but since we don't have it easily, we might send without it for now 
+                // or try to find it from the grid item that was clicked.
+                // For now, let's send just title.
+                
+                btn.disabled = true;
+                btn.innerText = 'GÖNDERİLİYOR...';
+                
+                try {
+                    const res = await fetch('/films/api/recommendations/send', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            friendId,
+                            filmTitle: title,
+                            senderNote: note
+                        })
+                    });
+                    
+                    const data = await res.json();
+                    if(data.success) {
+                        alert('Öneri başarıyla gönderildi!');
+                        document.getElementById('recommendModal').close();
+                    } else {
+                        alert('HATA: ' + data.error);
+                    }
+                } catch(err) {
+                    alert('Bir hata oluştu: ' + err.message);
+                } finally {
+                    btn.disabled = false;
+                    btn.innerText = 'GÖNDER';
+                }
+            }
+
             function openDetailModal(filmStr) {
                 const film = JSON.parse(decodeURIComponent(filmStr));
                 const m = document.getElementById('detailModal');
@@ -1445,6 +1559,77 @@ router.get('/hall-of-fame', (req, res) => {
     `, 'hall_of_fame_title', req));
 });
 
+// GET /friends - Friend Management & Recommendations
+router.get('/friends', (req, res) => {
+    const locale = getLocale(req);
+    const friends = db.prepare('SELECT * FROM friends ORDER BY name').all();
+    const recommendations = db.prepare('SELECT * FROM recommendations ORDER BY receivedDate DESC').all();
+
+    res.send(renderPage(`
+        <div class="section-header">
+            <h2 class="page-title" style="color:var(--ch-neon-green); text-shadow:0 0 10px rgba(0, 255, 0, 0.3);">ARKADAŞLAR</h2>
+        </div>
+
+        <div style="display:grid; grid-template-columns: 1fr 1fr; gap:2rem; margin-top:2rem;">
+            <!-- Left: Add Friend -->
+            <div style="background:var(--ch-bg-card); padding:2rem; border-radius:12px; border:1px solid #333;">
+                <h3 style="margin-top:0; color:var(--ch-neon-green); font-family:var(--ch-font-display);">ARKADAŞ EKLE</h3>
+                <form action="/films/api/friends/add" method="POST" style="margin-top:1.5rem;">
+                    <div style="margin-bottom:1rem;">
+                        <label style="display:block; color:#aaa; margin-bottom:5px; font-size:0.9rem;">Arkadaş Adı</label>
+                        <input type="text" name="name" required class="cinema-input" placeholder="Örn: Ahmet">
+                    </div>
+                    <div style="margin-bottom:1.5rem;">
+                        <label style="display:block; color:#aaa; margin-bottom:5px; font-size:0.9rem;">Tailscale URL</label>
+                        <input type="url" name="url" required class="cinema-input" placeholder="http://100.x.y.z:3001">
+                        <small style="color:#666; display:block; margin-top:5px;">Arkadaşınızın Tailscale IP adresi ve portu.</small>
+                    </div>
+                    <button type="submit" class="btn-cinema" style="width:100%; border-color:var(--ch-neon-green); color:var(--ch-neon-green);">KAYDET</button>
+                </form>
+
+                <h3 style="margin-top:2rem; color:#ccc; font-family:var(--ch-font-display); font-size:1.2rem;">KAYITLI ARKADAŞLAR</h3>
+                <div style="margin-top:1rem;">
+                    ${friends.map(f => `
+                        <div style="display:flex; justify-content:space-between; align-items:center;  padding:10px; background:rgba(255,255,255,0.05); margin-bottom:10px; border-radius:4px;">
+                            <div>
+                                <div style="font-weight:bold; color:#fff;">${f.name}</div>
+                                <div style="font-size:0.8rem; color:#888;">${f.url}</div>
+                            </div>
+                            <form action="/films/api/friends/delete/${f.id}" method="POST" onsubmit="return confirm('Silinsin mi?');">
+                                <button type="submit" style="background:none; border:none; color:var(--ch-neon-red); cursor:pointer;">&times;</button>
+                            </form>
+                        </div>
+                    `).join('')}
+                    ${friends.length === 0 ? '<div style="color:#666; font-style:italic;">Henüz arkadaş eklenmedi.</div>' : ''}
+                </div>
+            </div>
+
+            <!-- Right: Recommendations -->
+            <div style="background:var(--ch-bg-card); padding:2rem; border-radius:12px; border:1px solid #333;">
+                <h3 style="margin-top:0; color:var(--ch-neon-cyan); font-family:var(--ch-font-display);">GELEN ÖNERİLER</h3>
+                <div style="margin-top:1.5rem;">
+                     ${recommendations.map(r => `
+                        <div style="padding:1rem; background:rgba(0, 255, 255, 0.05); border-left:4px solid var(--ch-neon-cyan); margin-bottom:1rem; border-radius:4px;">
+                            <div style="display:flex; justify-content:space-between;">
+                                <h4 style="margin:0; color:#fff; font-size:1.1rem;">${r.filmTitle}</h4>
+                                <span style="font-size:0.8rem; color:#aaa;">${new Date(r.receivedAt).toLocaleDateString('tr-TR')}</span>
+                            </div>
+                            <div style="font-size:0.9rem; color:#888; margin-top:5px;">Gönderen: <span style="color:#ddd;">${r.senderName}</span></div>
+                            ${r.senderNote ? `<div style="font-style:italic; color:#ccc; margin-top:5px;">"${r.senderNote}"</div>` : ''}
+                            
+                            <div style="margin-top:1rem; display:flex; gap:10px;">
+                                <button class="btn-cinema-sm" style="background:var(--ch-neon-gold); color:#000; border-color:var(--ch-neon-gold);">LİSTEYE EKLE</button>
+                                <button class="btn-cinema-sm" style="background:transparent; color:#aaa; border-color:#555;">SİL</button>
+                            </div>
+                        </div>
+                     `).join('')}
+                     ${recommendations.length === 0 ? '<div style="color:#666; font-style:italic;">Henüz gelen öneri yok.</div>' : ''}
+                </div>
+            </div>
+        </div>
+    `, 'friends', req));
+});
+
 
 
 // GET /api/search - TMDB Proxy
@@ -2048,8 +2233,112 @@ router.get('/add', (req, res) => {
             }
     </script>
 `;
+
     res.send(renderPage(renderForm(null, '', locale) + importForm, 'title_add', req));
 });
+
+// --- FRIEND RECOMMENDATIONS ---
+
+// POST /api/recommendations/receive - Receive from a friend
+router.post('/api/recommendations/receive', (req, res) => {
+    try {
+        const { filmTitle, tmdbId, senderName, senderNote } = req.body;
+        // Basic validation
+        if (!filmTitle || !senderName) {
+            return res.status(400).json({ success: false, error: 'Missing fields' });
+        }
+
+        db.prepare('INSERT INTO recommendations (filmTitle, tmdbId, senderName, senderNote, status, receivedDate) VALUES (?, ?, ?, ?, ?, ?)')
+            .run(filmTitle, tmdbId, senderName, senderNote, 'pending', new Date().toISOString());
+
+        res.json({ success: true });
+    } catch (e) {
+        console.error('Recv Recommendation Error:', e);
+        res.status(500).json({ success: false, error: e.message });
+    }
+});
+
+// POST /api/recommendations/send - Send to a friend
+router.post('/api/recommendations/send', (req, res) => {
+    try {
+        const { friendId, filmTitle, tmdbId, senderNote } = req.body;
+
+        // Get friend details
+        const friend = db.prepare('SELECT * FROM friends WHERE id = ?').get(friendId);
+        if (!friend) return res.status(404).json({ success: false, error: 'Friend not found' });
+
+        // Get Sender Name (hardcoded for now or from config)
+        const senderName = 'Bir Dost';
+
+        const payload = JSON.stringify({
+            filmTitle,
+            tmdbId,
+            senderName,
+            senderNote
+        });
+
+        // Parse Friend URL (ensure no trailing slash)
+        const baseUrl = friend.url.replace(/\/$/, '');
+        const targetUrl = new URL(baseUrl + '/films/api/recommendations/receive');
+
+        const options = {
+            hostname: targetUrl.hostname,
+            port: targetUrl.port,
+            path: targetUrl.pathname,
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Content-Length': Buffer.byteLength(payload)
+            }
+        };
+
+        const protocol = targetUrl.protocol === 'https:' ? https : http;
+        const apiReq = protocol.request(options, (apiRes) => {
+            let data = '';
+            apiRes.on('data', (chunk) => data += chunk);
+            apiRes.on('end', () => {
+                if (apiRes.statusCode >= 200 && apiRes.statusCode < 300) {
+                    res.json({ success: true });
+                } else {
+                    res.status(apiRes.statusCode).json({ success: false, error: 'Friend server error: ' + apiRes.statusCode });
+                }
+            });
+        });
+
+        apiReq.on('error', (e) => {
+            res.status(500).json({ success: false, error: 'Connection failed: ' + e.message });
+        });
+
+        apiReq.write(payload);
+        apiReq.end();
+
+    } catch (e) {
+        console.error('Send Recommendation Error:', e);
+        res.status(500).json({ success: false, error: e.message });
+    }
+});
+
+// POST /api/friends/add
+router.post('/api/friends/add', (req, res) => {
+    const { name, url } = req.body;
+    if (name && url) {
+        db.prepare('INSERT INTO friends (name, url) VALUES (?, ?)').run(name, url);
+    }
+    res.redirect('/films/friends');
+});
+
+// POST /api/friends/delete/:id
+router.post('/api/friends/delete/:id', (req, res) => {
+    db.prepare('DELETE FROM friends WHERE id = ?').run(req.params.id);
+    res.redirect('/films/friends');
+});
+
+// GET /api/friends/list
+router.get('/api/friends/list', (req, res) => {
+    const friends = db.prepare('SELECT id, name FROM friends ORDER BY name').all();
+    res.json(friends);
+});
+
 
 // GET /edit/:id
 router.get('/edit/:id', (req, res) => {

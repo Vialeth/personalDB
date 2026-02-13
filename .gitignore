@@ -16,3 +16,4 @@ prepare_deploy.sh
 brain/
 tmp/
 *.csv
+ARKADAS_KURULUM.md

@@ -17,6 +17,7 @@ The core goal is data sovereignty. Unlike cloud-based services, this application
 *   **CSV Import (Notion):** Import your existing library exported from Notion or other CSV sources with column mapping support.
 *   **Auto-Fetch & Sync:** Tools to populate missing metadata and synchronize actor details.
 *   **Book Tracking:** A dedicated section for tracking reading progress and library management.
+*   **Friend Integration (P2P):** Connect with friends via Tailscale to exchange film recommendations securely.
 
 ## 📸 Screenshots
 
